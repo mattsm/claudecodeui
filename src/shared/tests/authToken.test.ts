@@ -21,6 +21,37 @@ const makeToken = (payload: Record<string, unknown>) => {
   return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(payload)}.signature`;
 };
 
+test('storeAuthToken: a same-user token with no newer issue time does not reconnect sockets', () => {
+  localStorage.clear();
+  const now = Math.floor(Date.now() / 1000);
+  const current = makeToken({ userId: 1, username: 'demo', iat: now, exp: now + 600 });
+  storeAuthToken(current);
+  let refreshes = 0;
+  const listener = () => { refreshes += 1; };
+  window.addEventListener(AUTH_TOKEN_REFRESHED_EVENT, listener);
+  try {
+    storeAuthToken(makeToken({ userId: 1, username: 'demo', iat: now, exp: now + 601 }));
+    storeAuthToken(makeToken({ userId: 1, username: 'demo', iat: now - 1, exp: now + 601 }));
+    assert.equal(localStorage.getItem('auth-token'), current);
+    assert.equal(refreshes, 0);
+    const newer = makeToken({ userId: 1, username: 'demo', iat: now + 1, exp: now + 602 });
+    storeAuthToken(newer);
+    assert.equal(localStorage.getItem('auth-token'), newer);
+    assert.equal(refreshes, 1);
+  } finally {
+    window.removeEventListener(AUTH_TOKEN_REFRESHED_EVENT, listener);
+  }
+});
+
+test('storeAuthToken: a different authenticated user is not treated as a stale refresh', () => {
+  localStorage.clear();
+  const now = Math.floor(Date.now() / 1000);
+  storeAuthToken(makeToken({ userId: 1, username: 'first', iat: now, exp: now + 600 }));
+  const replacement = makeToken({ userId: 2, username: 'second', iat: now - 1, exp: now + 600 });
+  storeAuthToken(replacement);
+  assert.equal(localStorage.getItem('auth-token'), replacement);
+});
+
 test('isAuthTokenExpired: a token well before its exp is not expired', () => {
   const now = Math.floor(Date.now() / 1000);
   const token = makeToken({ iat: now - 60, exp: now + 600 }); // 10 min from now
