@@ -29,6 +29,7 @@ import {
 import ChatMessagesPane from '@/modules/chat/transcript/ChatMessagesPane';
 import ChatComposer from '@/modules/chat/composer/ChatComposer';
 import CommandResultModal from '@/modules/chat/modals/CommandResultModal';
+import { SessionHandoffButton } from '@/modules/chat/modals/SessionHandoffButton';
 
 type ChatInterfaceProps = {
   isActive: boolean;
@@ -455,6 +456,18 @@ function ChatInterface({
   return (
     <PermissionContext.Provider value={permissionContextValue}>
       <div className="flex h-full min-h-0 flex-col">
+        {selectedSession && onNavigateToSession && (
+          <div className="flex justify-end px-3">
+            <SessionHandoffButton
+              key={selectedSession.id}
+              sessionId={selectedSession.id}
+              provider={provider}
+              disabled={isProcessing || isLoadingSessionMessages || providerModelsLoading}
+              providerModelCatalog={providerModelCatalog}
+              onNavigate={onNavigateToSession}
+            />
+          </div>
+        )}
         <MarkdownWorkspaceContext.Provider value={markdownWorkspaceValue}>
           <TranscriptSessionContext.Provider value={transcriptSessionValue}>
             <ChatMessagesPane
