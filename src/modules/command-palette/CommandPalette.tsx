@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowDownToLine,
@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from '@/shared/ui';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { api } from '@/shared/api';
 import { usePaletteOps } from '@/modules/command-palette/context/PaletteOpsContext';
 import { SETTINGS_MAIN_TABS } from '@/shared/constants';
 import type { AppTab, Project } from '@/shared/types';
@@ -63,6 +64,8 @@ function CommandPalette({
   onShowTab,
 }: CommandPaletteProps) {
   const { t } = useTranslation();
+  const location = useLocation();
+  const currentSessionId = location.pathname.match(/^\/session\/([^/?#]+)/)?.[1] ?? null;
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [pages, setPages] = React.useState<Page[]>([]);
@@ -211,6 +214,24 @@ function CommandPalette({
                 <CommandItem value={`${t('commandPalette.toggleTheme')} dark light mode`} onSelect={() => run(toggleDarkMode)}>
                   <SunMoon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   <span className="flex-1">{t('commandPalette.toggleTheme')}</span>
+                </CommandItem>
+                <CommandItem
+                  value="Archive current session chat"
+                  disabled={!currentSessionId}
+                  onSelect={() => run(async () => {
+                    if (!currentSessionId) return;
+                    try {
+                      const response = await api.deleteSession(currentSessionId);
+                      if (!response.ok) throw new Error('Failed to archive session');
+                      window.location.assign('/');
+                    } catch {
+                      window.alert('Failed to archive session');
+                    }
+                  })}
+                >
+                  <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="flex-1">Archive current session</span>
+                  {!currentSessionId && <span className="text-xs text-muted-foreground">Open a session first</span>}
                 </CommandItem>
               </CommandGroup>
             )}
