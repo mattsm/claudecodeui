@@ -165,6 +165,9 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
    * source keyed by "subagent".
    */
   private isSubagentSessionMeta(payload: Record<string, unknown>): boolean {
+    if (payload.originator === 'codex_exec') {
+      return true;
+    }
     if (payload.thread_source === 'subagent') {
       return true;
     }
