@@ -216,9 +216,9 @@ function ChatInterface({
     isDragActive,
     openAttachmentPicker,
     handleSubmit,
-    queuedDraft,
-    editQueuedDraft,
-    deleteQueuedDraft,
+    queuedMessages,
+    editQueuedMessage,
+    deleteQueuedMessage,
     handleVoiceTranscript,
     handleInputChange,
     handleKeyDown,
@@ -578,9 +578,9 @@ function ChatInterface({
           onClearInput={handleClearInput}
           onSubmit={handleSubmit}
           isDragActive={isDragActive}
-          queuedDraft={queuedDraft}
-          onEditQueuedDraft={editQueuedDraft}
-          onDeleteQueuedDraft={deleteQueuedDraft}
+          queuedMessages={queuedMessages}
+          onEditQueuedMessage={editQueuedMessage}
+          onDeleteQueuedMessage={deleteQueuedMessage}
           attachedFiles={attachedFiles}
           onRemoveAttachment={(index) =>
             setAttachedFiles((previous) =>
