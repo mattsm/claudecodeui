@@ -29,6 +29,12 @@ export function createSystemUpdateService(dependencies: SystemUpdateDependencies
   return {
     /** Selects and executes the correct update workflow for this installation. */
     async updateSystem() {
+      if (dependencies.environment.CLOUDCLI_MANAGED_DEPLOYMENT === '1') {
+        return {
+          success: false as const,
+          error: 'This is a managed release. Activate a tested release with cloudcli-deployment/activate.sh; the global npm updater cannot preserve its patches.',
+        };
+      }
       const updateCommand = dependencies.isPlatform
         ? 'npm run update:platform'
         : dependencies.installMode === 'git'
