@@ -20,6 +20,7 @@ export const isValidRefreshedToken = (token: unknown): token is string =>
 type TokenClaims = {
   issuedAt: number;
   expiresAt: number;
+  identity: string | null;
 };
 
 const readTokenClaims = (token: unknown): TokenClaims | null => {
@@ -33,7 +34,7 @@ const readTokenClaims = (token: unknown): TokenClaims | null => {
       encodedPayload.length + ((4 - (encodedPayload.length % 4)) % 4),
       '=',
     );
-    const payload = JSON.parse(atob(paddedPayload)) as { iat?: unknown; exp?: unknown };
+    const payload = JSON.parse(atob(paddedPayload)) as { iat?: unknown; exp?: unknown; userId?: unknown; username?: unknown };
 
     if (
       typeof payload.iat !== 'number' ||
@@ -44,7 +45,10 @@ const readTokenClaims = (token: unknown): TokenClaims | null => {
       return null;
     }
 
-    return { issuedAt: payload.iat * 1000, expiresAt: payload.exp * 1000 };
+    const identity = (typeof payload.userId === 'number' || typeof payload.userId === 'string') && typeof payload.username === 'string'
+      ? `${payload.userId}|${payload.username}`
+      : null;
+    return { issuedAt: payload.iat * 1000, expiresAt: payload.exp * 1000, identity };
   } catch {
     return null;
   }
@@ -90,6 +94,14 @@ export const getStoredAuthToken = (): string | null => {
 export const storeAuthToken = (token: unknown): boolean => {
   if (!isValidRefreshedToken(token)) {
     return false;
+  }
+
+  const previousToken = localStorage.getItem('auth-token');
+  if (previousToken === token) return true;
+  const incoming = readTokenClaims(token);
+  const previous = readTokenClaims(previousToken);
+  if (incoming && previous && incoming.identity && incoming.identity === previous.identity && incoming.issuedAt <= previous.issuedAt) {
+    return true;
   }
 
   localStorage.setItem('auth-token', token);
