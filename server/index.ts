@@ -8,6 +8,7 @@ import http from 'http';
 
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
+import { rateLimit } from 'express-rate-limit';
 
 import { AppError, findApplicationRoot, getModuleDirectory, IS_PLATFORM, terminalTextStyles } from '@/shared/utils.js';
 import {
@@ -82,6 +83,7 @@ const systemRoutes = createSystemModule({
 console.log('SERVER_PORT from env:', process.env.SERVER_PORT);
 
 const app = express();
+app.set('trust proxy', 'loopback');
 const server = http.createServer(app);
 const queryClaude = providerRuntimeService.getRunner('claude');
 const queryCursor = providerRuntimeService.getRunner('cursor');
@@ -152,6 +154,14 @@ app.get('/health', (req, res) => {
 app.use('/api', validateApiKey);
 
 // Authentication routes (public)
+app.use(['/api/auth/login', '/api/auth/register'], rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    skipSuccessfulRequests: true,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+}));
 app.use('/api/auth', authRoutes);
 
 // File Tree API Routes (protected)
