@@ -23,14 +23,13 @@ export const CODEX_PREDEFINED_MODELS: ProviderModelsDefinition = {
       label: 'GPT-6 Astra',
       description: 'Our most capable model for complex, demanding work.',
       effort: {
-        default: 'low',
+        default: 'medium',
         values: [
           { value: 'low' },
           { value: 'medium' },
           { value: 'high' },
           { value: 'xhigh' },
           { value: 'max' },
-          { value: 'ultra' },
         ],
       },
     },
