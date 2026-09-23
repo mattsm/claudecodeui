@@ -29,20 +29,6 @@ const ULTRACODE_EFFORT_OPTION = {
 export const CLAUDE_PREDEFINED_MODELS: ProviderModelsDefinition = {
   OPTIONS: [
     {
-      value: 'default',
-      label: 'Default (recommended)',
-      description: 'Use the recommended model for your Claude account and deployment.',
-      effort: {
-        default: 'high',
-        values: [
-          { value: 'low' },
-          { value: 'medium' },
-          { value: 'high' },
-          { value: 'max' },
-        ],
-      },
-    },
-    {
       value: 'best',
       label: 'Best available',
       description: 'Use Fable 5 when available, otherwise the latest Opus model.',
@@ -60,7 +46,7 @@ export const CLAUDE_PREDEFINED_MODELS: ProviderModelsDefinition = {
     },
     {
       value: 'fable',
-      label: 'Fable 5',
+      label: 'Fable 5.1',
       description: 'Most capable Claude model for the hardest, longest-running tasks.',
       effort: {
         default: 'high',
@@ -160,8 +146,82 @@ export const CLAUDE_PREDEFINED_MODELS: ProviderModelsDefinition = {
       },
     },
   ],
-  DEFAULT: 'default',
+  DEFAULT: 'fable',
 };
+
+/**
+ * Claude Code resolves these alias values through the `ANTHROPIC_DEFAULT_*_MODEL`
+ * environment variables, so on a Foundry resource "Opus" is whichever deployment the
+ * variable names rather than the newest Opus. Name the resolved model in the label,
+ * version first so it survives the composer button's truncation on narrow screens.
+ * With the variables unset the labels stay upstream's.
+ */
+const ALIAS_MODEL_ENV_VARS: Readonly<Record<string, string>> = {
+  fable: 'ANTHROPIC_DEFAULT_FABLE_MODEL',
+  sonnet: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'sonnet[1m]': 'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  opus: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'opus[1m]': 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  opusplan: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  haiku: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+};
+
+/** `[1m]` is a Claude Code context-window annotation, not part of the deployment name. */
+const stripContextAnnotation = (model: string): string => model.replace(/\[[^\]]*\]$/, '').trim();
+
+/** Exported for tests. */
+export const resolveAliasDeployment = (
+  value: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null => {
+  const envVar = ALIAS_MODEL_ENV_VARS[value];
+  if (!envVar) {
+    return null;
+  }
+
+  const deployment = stripContextAnnotation(env[envVar]?.trim() ?? '');
+  // An alias pointing at itself ("opus") would add nothing to the label.
+  return deployment && deployment !== value ? deployment : null;
+};
+
+/**
+ * `claude-opus-5-5` -> "Opus 5.5". Only the first two version numbers count: a third is a
+ * Foundry deployment revision (`claude-opus-4-6-2`) or a date (`claude-haiku-4-5-20251001`).
+ * Exported for tests.
+ */
+export const describeClaudeDeployment = (deployment: string): string | null => {
+  const match = /^claude-([a-z]+)-(\d{1,2})(?:-(\d{1,2}))?(?:-\d+)*$/.exec(deployment);
+  if (!match) {
+    return null;
+  }
+
+  const [, family, major, minor] = match;
+  const version = minor === undefined ? major : `${major}.${minor}`;
+  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${version}`;
+};
+
+const labelForDeployment = (option: ProviderModelOption, deployment: string): string => {
+  const name = describeClaudeDeployment(deployment);
+  if (!name) {
+    return `${option.label} · ${deployment}`;
+  }
+  if (option.value === 'opusplan') {
+    return `${name} Plan`;
+  }
+  return option.value.endsWith('[1m]') ? `${name} (1M context)` : name;
+};
+
+/** Exported for tests. */
+export const annotateClaudeModelLabels = (
+  definition: ProviderModelsDefinition,
+  env: NodeJS.ProcessEnv = process.env,
+): ProviderModelsDefinition => ({
+  ...definition,
+  OPTIONS: definition.OPTIONS.map((option) => {
+    const deployment = resolveAliasDeployment(option.value, env);
+    return deployment ? { ...option, label: labelForDeployment(option, deployment) } : option;
+  }),
+});
 
 export const findClaudeModelOption = (model: string | undefined | null): ProviderModelOption | null => {
   const normalizedModel = typeof model === 'string' ? model.trim() : '';
@@ -289,7 +349,7 @@ export class ClaudeProviderModels implements IProviderModels {
     // const supportedModels = await queryInstance.supportedModels();
     // queryInstance.close();
     // return buildClaudeModelsDefinition(supportedModels);
-    return CLAUDE_PREDEFINED_MODELS;
+    return annotateClaudeModelLabels(CLAUDE_PREDEFINED_MODELS);
   }
 
   async getCurrentActiveModel(sessionId?: string): Promise<ProviderCurrentActiveModel> {
