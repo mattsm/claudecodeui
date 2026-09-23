@@ -66,6 +66,17 @@ test('global npm installations update from the user home directory', async () =>
   assert.equal(result.output, 'Update completed successfully');
 });
 
+test('managed deployments refuse the global updater without spawning a command', async () => {
+  const service = createSystemUpdateService(createDependencies({
+    installMode: 'npm',
+    environment: { CLOUDCLI_MANAGED_DEPLOYMENT: '1' },
+    runShellCommand: async () => { throw new Error('Must not spawn'); },
+  }));
+  const result = await service.updateSystem();
+  assert.equal(result.success, false);
+  assert.match(result.error ?? '', /managed release/);
+});
+
 test('platform installations use the platform workflow regardless of install mode', async () => {
   const calls: unknown[][] = [];
   const dependencies = createDependencies({
