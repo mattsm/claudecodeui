@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  CLI_BG_HARD_CEILING_MS,
+  CLI_BG_TERMINATED_PATTERN,
+  shouldReleaseOnSilence,
   createCliStderrChunker,
   createCliStderrEmitter,
   createCliStderrFormatter,
@@ -422,3 +425,26 @@ test('claude cli stderr: blank lines are ignored and do not consume the window',
 
   assert.deepEqual(h.written, ['[claude-cli-stderr] tag real line']);
 });
+
+// The CLI counts its ceiling from the end of the turn, held stdin or not; a 30 minute
+// value there killed every background Workflow that ran longer than that.
+test('claude cli: the CLI wait ceiling is far longer than the 30 minute silence hold', () => {
+  assert.ok(CLI_BG_HARD_CEILING_MS === 0 || CLI_BG_HARD_CEILING_MS >= 4 * 60 * 60 * 1000);
+});
+
+test('claude cli: the ceiling kill line is recognised, with its duration', () => {
+  const line = 'Background tasks still running after 1800s; terminating. '
+    + 'Set CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 to wait indefinitely.';
+  assert.equal(CLI_BG_TERMINATED_PATTERN.exec(line)?.[1], '1800');
+  assert.equal(CLI_BG_TERMINATED_PATTERN.exec('Background tasks finished'), null);
+});
+
+test('claude runtime: silence alone does not release a hold whose tasks are still outstanding', () => {
+  const hour = 60 * 60 * 1000;
+  const held = { heldSinceMs: 0, hardCeilingMs: 6 * hour };
+  assert.equal(shouldReleaseOnSilence({ ...held, outstanding: false, nowMs: hour / 2 }), true);
+  assert.equal(shouldReleaseOnSilence({ ...held, outstanding: true, nowMs: hour / 2 }), false);
+  assert.equal(shouldReleaseOnSilence({ ...held, outstanding: true, nowMs: 6 * hour }), true);
+  assert.equal(shouldReleaseOnSilence({ ...held, hardCeilingMs: 0, outstanding: true, nowMs: 48 * hour }), false);
+});
+
