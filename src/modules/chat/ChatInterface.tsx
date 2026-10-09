@@ -149,6 +149,7 @@ function ChatInterface({
     visibleMessageCount,
     visibleMessages,
     loadEarlierMessages,
+    loadOlderMessagesPage,
     revealMessage,
     loadAllMessages,
     loadFullTranscript,
@@ -504,6 +505,7 @@ function ChatInterface({
               visibleMessageCount={visibleMessageCount}
               visibleMessages={visibleMessages}
               loadEarlierMessages={loadEarlierMessages}
+              loadOlderMessagesPage={loadOlderMessagesPage}
               revealMessage={revealMessage}
               backgroundTasks={sessionActivity?.tasks}
               sendMessage={sendMessage}
