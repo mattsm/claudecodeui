@@ -189,157 +189,188 @@ function ChatMessagesPane({
   );
 
   return (
-    <div
-      ref={scrollContainerRef}
-      onWheel={onWheel}
-      onTouchMove={onTouchMove}
-      className={`chat-messages-pane relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-3 sm:pt-4 ${
-        hasActivityIndicator ? 'pb-12 sm:pb-14' : 'pb-3 sm:pb-4'
-      }`}
-    >
-      {chatMessages.length > 0 && (
-        <div className="pointer-events-none sticky right-4 top-3 z-10 mb-2 flex items-start justify-between gap-2 sm:px-4">
-          {/* Running background work stays in view while the transcript scrolls under it. */}
-          <div className="pointer-events-auto min-w-0 pl-4 sm:pl-0">
-            <BackgroundTasksStrip
-              messages={chatMessages}
-              tasks={backgroundTasks}
-              sessionId={selectedSession?.id || currentSessionId}
-              sendMessage={sendMessage}
-              onReveal={revealMessage}
-              onLoadAll={loadAllMessages}
-            />
-          </div>
-          <div className="pointer-events-auto">
-            <ChatExportMenu
-              messages={chatMessages}
-              sessionTitle={selectedSession?.summary || selectedSession?.title}
-              provider={provider}
-              selectedProject={selectedProject}
-              createDiff={createDiff}
-              onLoadFullTranscript={onLoadFullTranscript}
-            />
-          </div>
-        </div>
-      )}
-      <div className="mx-auto w-full max-w-[54.25rem] space-y-3 px-4 sm:space-y-4">
-      {(isLoadingSessionMessages || isProcessing) && chatMessages.length === 0 ? (
-        <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
-          <div className="flex items-center justify-center space-x-2">
-            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-gray-400" />
-            <p>{t('session.loading.sessionMessages')}</p>
-          </div>
-        </div>
-      ) : chatMessages.length === 0 ? (
-        <ProviderSelectionEmptyState
-          selectedSession={selectedSession}
-          currentSessionId={currentSessionId}
-          provider={provider}
-          setProvider={setProvider}
-          textareaRef={textareaRef}
-          providerModels={providerModels}
-          setProviderModel={setProviderModel}
-          providerModelCatalog={providerModelCatalog}
-          providerModelActions={providerModelActions}
-          providerModelsLoading={providerModelsLoading}
-          tasksEnabled={tasksEnabled}
-          isTaskMasterInstalled={isTaskMasterInstalled}
-          onShowAllTasks={onShowAllTasks}
-          setInput={setInput}
-        />
-      ) : (
-        <>
-          {/* Loading indicator for older messages (hide when load-all is active) */}
-          {isLoadingMoreMessages && !isLoadingAllMessages && !allMessagesLoaded && (
-            <div className="py-3 text-center text-gray-500 dark:text-gray-400">
-              <div className="flex items-center justify-center space-x-2">
-                <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-gray-400" />
-                <p className="text-sm">{t('session.loading.olderMessages')}</p>
+    <div className="flex min-h-0 flex-1">
+      <div
+        ref={scrollContainerRef}
+        onWheel={onWheel}
+        onTouchMove={onTouchMove}
+        className={`chat-messages-pane relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-3 sm:pt-4 ${
+          hasActivityIndicator ? 'pb-12 sm:pb-14' : 'pb-3 sm:pb-4'
+        }`}
+      >
+        {chatMessages.length > 0 && (
+          // Zero height, so the transcript starts at the top; the export menu and
+          // the running-work panel float over its right edge and stay in view
+          // while it scrolls under them.
+          <div className="pointer-events-none sticky top-3 z-10 h-0 px-4">
+            <div className="flex flex-col items-end gap-2">
+              <div className="pointer-events-auto">
+                <ChatExportMenu
+                  messages={chatMessages}
+                  sessionTitle={selectedSession?.summary || selectedSession?.title}
+                  provider={provider}
+                  selectedProject={selectedProject}
+                  createDiff={createDiff}
+                  onLoadFullTranscript={onLoadFullTranscript}
+                />
+              </div>
+              <div className="pointer-events-auto">
+                <BackgroundTasksStrip
+                  messages={chatMessages}
+                  tasks={backgroundTasks}
+                  sessionId={selectedSession?.id || currentSessionId}
+                  sendMessage={sendMessage}
+                  onReveal={revealMessage}
+                  onLoadAll={loadAllMessages}
+                />
               </div>
             </div>
-          )}
-
-          {/* Indicator showing there are more messages to load (hide when all loaded).
-              The controls are real buttons rather than a "scroll up to load more" hint
-              because a page shorter than the pane cannot be scrolled at all, which used
-              to leave the rest of the history unreachable. */}
-          {hasMoreMessages && !isLoadingMoreMessages && !allMessagesLoaded && (
-            <div className="border-b border-gray-200 py-2 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-              {totalMessages > 0 && (
-                <span>
-                  {t('session.messages.showingOf', { shown: sessionMessagesCount, total: totalMessages })}
-                  {' | '}
-                  <button
-                    type="button"
-                    className="text-blue-600 underline hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                    onClick={loadOlderMessagesPage}
-                  >
-                    {t('session.messages.loadEarlier')}
-                  </button>
-                  {' | '}
-                  <button
-                    type="button"
-                    className="text-blue-600 underline hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                    onClick={loadAllMessages}
-                  >
-                    {t('session.messages.loadAll')}
-                  </button>
-                </span>
-              )}
+          </div>
+        )}
+        <div className="mx-auto w-full max-w-[54.25rem] space-y-3 px-4 sm:space-y-4">
+        {(isLoadingSessionMessages || isProcessing) && chatMessages.length === 0 ? (
+          <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
+            <div className="flex items-center justify-center space-x-2">
+              <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-gray-400" />
+              <p>{t('session.loading.sessionMessages')}</p>
             </div>
-          )}
-
-          <LoadAllMessagesOverlay
-            showLoadAllOverlay={showLoadAllOverlay}
-            isLoadingAllMessages={isLoadingAllMessages}
-            loadAllJustFinished={loadAllJustFinished}
-            totalMessages={totalMessages}
-            onLoadAllMessages={loadAllMessages}
+          </div>
+        ) : chatMessages.length === 0 ? (
+          <ProviderSelectionEmptyState
+            selectedSession={selectedSession}
+            currentSessionId={currentSessionId}
+            provider={provider}
+            setProvider={setProvider}
+            textareaRef={textareaRef}
+            providerModels={providerModels}
+            setProviderModel={setProviderModel}
+            providerModelCatalog={providerModelCatalog}
+            providerModelActions={providerModelActions}
+            providerModelsLoading={providerModelsLoading}
+            tasksEnabled={tasksEnabled}
+            isTaskMasterInstalled={isTaskMasterInstalled}
+            onShowAllTasks={onShowAllTasks}
+            setInput={setInput}
           />
+        ) : (
+          <>
+            {/* Loading indicator for older messages (hide when load-all is active) */}
+            {isLoadingMoreMessages && !isLoadingAllMessages && !allMessagesLoaded && (
+              <div className="py-3 text-center text-gray-500 dark:text-gray-400">
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-gray-400" />
+                  <p className="text-sm">{t('session.loading.olderMessages')}</p>
+                </div>
+              </div>
+            )}
 
-          {/* Legacy message count indicator (for non-paginated view) */}
-          {!hasMoreMessages && chatMessages.length > visibleMessageCount && (
-            <div className="border-b border-gray-200 py-2 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-              {t('session.messages.showingLast', { count: visibleMessageCount, total: chatMessages.length })} |
-              <button className="ml-1 text-blue-600 underline hover:text-blue-700" onClick={loadEarlierMessages}>
-                {t('session.messages.loadEarlier')}
-              </button>
-              {' | '}
-              <button
-                className="text-blue-600 underline hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                onClick={loadAllMessages}
-              >
-                {t('session.messages.loadAll')}
-              </button>
-            </div>
-          )}
+            {/* Indicator showing there are more messages to load (hide when all loaded).
+                The controls are real buttons rather than a "scroll up to load more" hint
+                because a page shorter than the pane cannot be scrolled at all, which used
+                to leave the rest of the history unreachable. */}
+            {hasMoreMessages && !isLoadingMoreMessages && !allMessagesLoaded && (
+              <div className="border-b border-gray-200 py-2 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                {totalMessages > 0 && (
+                  <span>
+                    {t('session.messages.showingOf', { shown: sessionMessagesCount, total: totalMessages })}
+                    {' | '}
+                    <button
+                      type="button"
+                      className="text-blue-600 underline hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                      onClick={loadOlderMessagesPage}
+                    >
+                      {t('session.messages.loadEarlier')}
+                    </button>
+                    {' | '}
+                    <button
+                      type="button"
+                      className="text-blue-600 underline hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                      onClick={loadAllMessages}
+                    >
+                      {t('session.messages.loadAll')}
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
 
-          {(() => {
-            let prevMessage: ChatMessage | null = null;
-            const rowCount = groupedVisibleMessages.length;
+            <LoadAllMessagesOverlay
+              showLoadAllOverlay={showLoadAllOverlay}
+              isLoadingAllMessages={isLoadingAllMessages}
+              loadAllJustFinished={loadAllJustFinished}
+              totalMessages={totalMessages}
+              onLoadAllMessages={loadAllMessages}
+            />
 
-            return groupedVisibleMessages.map((item, index) => {
-              // Rows near the tail mount their content on first commit so the
-              // initial scroll-to-bottom measures real heights; older rows
-              // start as placeholders and mount when scrolled toward.
-              const initiallyNearViewport = index >= rowCount - INITIAL_MOUNTED_TAIL_ROWS;
+            {/* Legacy message count indicator (for non-paginated view) */}
+            {!hasMoreMessages && chatMessages.length > visibleMessageCount && (
+              <div className="border-b border-gray-200 py-2 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                {t('session.messages.showingLast', { count: visibleMessageCount, total: chatMessages.length })} |
+                <button className="ml-1 text-blue-600 underline hover:text-blue-700" onClick={loadEarlierMessages}>
+                  {t('session.messages.loadEarlier')}
+                </button>
+                {' | '}
+                <button
+                  className="text-blue-600 underline hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  onClick={loadAllMessages}
+                >
+                  {t('session.messages.loadAll')}
+                </button>
+              </div>
+            )}
 
-              if (isToolGroupItem(item)) {
-                const groupPrevMessage = prevMessage;
-                prevMessage = item.messages[item.messages.length - 1] || prevMessage;
+            {(() => {
+              let prevMessage: ChatMessage | null = null;
+              const rowCount = groupedVisibleMessages.length;
+
+              return groupedVisibleMessages.map((item, index) => {
+                // Rows near the tail mount their content on first commit so the
+                // initial scroll-to-bottom measures real heights; older rows
+                // start as placeholders and mount when scrolled toward.
+                const initiallyNearViewport = index >= rowCount - INITIAL_MOUNTED_TAIL_ROWS;
+
+                if (isToolGroupItem(item)) {
+                  const groupPrevMessage = prevMessage;
+                  prevMessage = item.messages[item.messages.length - 1] || prevMessage;
+
+                  return (
+                    <LazyMessageRow
+                      key={`tool-group-${getMessageKey(item.messages[0])}`}
+                      lazyRows={lazyRows}
+                      timestamp={item.timestamp}
+                      initiallyNearViewport={initiallyNearViewport}
+                    >
+                      <ToolGroupContainer
+                        group={item}
+                        prevMessage={groupPrevMessage}
+                        createDiff={createDiff}
+                        getMessageKey={getGroupedMessageKey}
+                        onFileOpen={onFileOpen}
+                        onShowSettings={onShowSettings}
+                        onGrantToolPermission={onGrantToolPermission}
+                        showRawParameters={showRawParameters}
+                        showThinking={showThinking}
+                        selectedProject={selectedProject}
+                        provider={provider}
+                      />
+                    </LazyMessageRow>
+                  );
+                }
+
+                const messagePrevMessage = prevMessage;
+                prevMessage = item;
 
                 return (
                   <LazyMessageRow
-                    key={`tool-group-${getMessageKey(item.messages[0])}`}
+                    key={getMessageKey(item)}
                     lazyRows={lazyRows}
                     timestamp={item.timestamp}
                     initiallyNearViewport={initiallyNearViewport}
                   >
-                    <ToolGroupContainer
-                      group={item}
-                      prevMessage={groupPrevMessage}
+                    <MessageComponent
+                      message={item}
+                      prevMessage={messagePrevMessage}
                       createDiff={createDiff}
-                      getMessageKey={getGroupedMessageKey}
                       onFileOpen={onFileOpen}
                       onShowSettings={onShowSettings}
                       onGrantToolPermission={onGrantToolPermission}
@@ -347,42 +378,28 @@ function ChatMessagesPane({
                       showThinking={showThinking}
                       selectedProject={selectedProject}
                       provider={provider}
+                      onEditMessage={onEditMessage}
+                      onForkFromMessage={onForkFromMessage}
                     />
                   </LazyMessageRow>
                 );
-              }
-
-              const messagePrevMessage = prevMessage;
-              prevMessage = item;
-
-              return (
-                <LazyMessageRow
-                  key={getMessageKey(item)}
-                  lazyRows={lazyRows}
-                  timestamp={item.timestamp}
-                  initiallyNearViewport={initiallyNearViewport}
-                >
-                  <MessageComponent
-                    message={item}
-                    prevMessage={messagePrevMessage}
-                    createDiff={createDiff}
-                    onFileOpen={onFileOpen}
-                    onShowSettings={onShowSettings}
-                    onGrantToolPermission={onGrantToolPermission}
-                    showRawParameters={showRawParameters}
-                    showThinking={showThinking}
-                    selectedProject={selectedProject}
-                    provider={provider}
-                    onEditMessage={onEditMessage}
-                    onForkFromMessage={onForkFromMessage}
-                  />
-                </LazyMessageRow>
-              );
-            });
-          })()}
-        </>
-      )}
+              });
+            })()}
+          </>
+        )}
+        </div>
       </div>
+      {chatMessages.length > 0 && (
+        <BackgroundTasksStrip
+          variant="sidebar"
+          messages={chatMessages}
+          tasks={backgroundTasks}
+          sessionId={selectedSession?.id || currentSessionId}
+          sendMessage={sendMessage}
+          onReveal={revealMessage}
+          onLoadAll={loadAllMessages}
+        />
+      )}
     </div>
   );
 }

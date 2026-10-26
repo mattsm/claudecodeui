@@ -1,12 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import '@/modules/i18n';
 import { BackgroundTasksStrip } from '@/modules/chat/transcript/BackgroundTasksStrip';
 import { visibleCountToReveal } from '@/modules/chat/hooks/useChatSessionState';
 import { SESSION_MESSAGES_PAGE_SIZE } from '@/modules/chat/utils/sessionMessagePagination';
 import type { ChatMessage } from '@/shared/types';
+
+// Open, as the user leaves it once they want to see the list; the collapsed
+// pill has its own test below.
+const preferences = vi.hoisted(() => ({ backgroundTasksExpanded: true }));
+const setPreference = vi.hoisted(() => vi.fn());
+vi.mock('@/shared/context/UiPreferencesContext', () => ({
+  useUiPreferences: () => preferences,
+  useSetUiPreference: () => setPreference,
+}));
 
 const toolRow = (overrides: Partial<ChatMessage>): ChatMessage => ({
   type: 'assistant',
@@ -15,6 +24,10 @@ const toolRow = (overrides: Partial<ChatMessage>): ChatMessage => ({
   isToolUse: true,
   ...overrides,
 });
+
+/** The task rows' own buttons, without the panel's header or the rows' Stop buttons. */
+const rowButtons = (): HTMLElement[] => screen.queryAllByRole('listitem').flatMap((item) =>
+  Array.from(item.querySelectorAll('button')).filter((button) => button.getAttribute('aria-label') !== 'Stop'));
 
 describe('the background tasks strip', () => {
   it('lists a running workflow and a running agent with what each has got to', () => {
@@ -47,10 +60,9 @@ describe('the background tasks strip', () => {
       />,
     );
 
-    const chips = screen.getAllByRole('button');
-    expect(chips.map((chip) => chip.textContent)).toEqual([
-      'Workflowfrontend-architecture-audit· Verify 3/6',
-      'AgentSurvey the repo· 12 tools',
+    expect(rowButtons().map((chip) => chip.textContent)).toEqual([
+      'Workflowfrontend-architecture-auditVerify 3/6',
+      'AgentSurvey the repo12 tools',
     ]);
   });
 
@@ -83,7 +95,7 @@ describe('the background tasks strip', () => {
       />,
     );
 
-    expect(screen.getByRole('button').textContent).toBe('Workflowfrontend-architecture-audit· 2/4 agents · audit:sidebar');
+    expect(rowButtons()[0].textContent).toBe('Workflowfrontend-architecture-audit2/4 agents · audit:sidebar');
   });
 
   it('renders nothing when no task is running', () => {
@@ -135,7 +147,7 @@ describe('the background tasks strip', () => {
       />,
     );
 
-    expect(screen.getByRole('button').textContent).toBe('Workflowfrontend-architecture-audit· 1/2');
+    expect(rowButtons()[0].textContent).toBe('Workflowfrontend-architecture-audit1/2');
   });
 
   it('asks the pane to reveal the task\'s row when its chip is clicked', () => {
@@ -151,7 +163,7 @@ describe('the background tasks strip', () => {
 
     render(<BackgroundTasksStrip sessionId="session-1" sendMessage={() => {}} onReveal={onReveal} onLoadAll={() => {}} messages={[row]} />);
 
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(rowButtons()[0]);
     expect(onReveal).toHaveBeenCalledWith(row);
   });
 
@@ -174,14 +186,12 @@ describe('the background tasks strip', () => {
       />,
     );
 
-    const chip = screen.getByRole('button');
-    const progress = chip.lastElementChild as HTMLElement;
-    expect(progress.textContent).toBe(`· ${summary}`);
+    const chip = rowButtons()[0];
+    const progress = chip.lastElementChild?.lastElementChild as HTMLElement;
+    expect(progress.textContent).toBe(summary);
     expect(progress.className).toContain('truncate');
-    expect(progress.className).toContain('min-w-0');
-    expect(progress.className).not.toContain('flex-shrink-0');
     expect(chip.title).toBe(`Workflow · frontend-architecture-audit · ${summary}`);
-    expect(chip.parentElement?.className).toContain('max-w-full');
+    expect(chip.className).toContain('min-w-0');
   });
 
   it('does not repeat the launch\'s description as progress', () => {
@@ -211,7 +221,7 @@ describe('the background tasks strip', () => {
       />,
     );
 
-    expect(screen.getAllByRole('button').map((chip) => chip.textContent)).toEqual([
+    expect(rowButtons().map((chip) => chip.textContent)).toEqual([
       'Workflowaudit',
       'AgentSurvey the repo',
     ]);
@@ -237,7 +247,7 @@ describe('the background tasks strip', () => {
       />,
     );
 
-    expect(screen.getByRole('button').textContent).toBe('Workflowaudit');
+    expect(rowButtons()[0].textContent).toBe('Workflowaudit');
   });
 
   it('stops a task over the websocket from its chip, by the id its events or acknowledgement named', () => {
@@ -316,8 +326,8 @@ describe('the background tasks strip, for a task whose launch row is not loaded'
       />,
     );
 
-    const chips = screen.getAllByRole('button');
-    expect(chips.map((chip) => chip.textContent)).toEqual(['Workflowaudit', '']);
+    const chips = rowButtons();
+    expect(chips.map((chip) => chip.textContent)).toEqual(['Workflowaudit']);
     expect(chips[0]?.title).toBe('Workflow · audit · Launched earlier in this conversation; click to load it');
     fireEvent.click(chips[0]!);
     expect(onLoadAll).toHaveBeenCalledTimes(1);
@@ -369,7 +379,7 @@ describe('the background tasks strip, for tasks only the activity map has a word
       />,
     );
 
-    expect(screen.getAllByRole('button').map((chip) => chip.textContent)).toEqual(['Commandnpm test', '']);
+    expect(rowButtons().map((chip) => chip.textContent)).toEqual(['Commandnpm test']);
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(sendMessage).toHaveBeenCalledWith({ type: 'chat.stop-task', sessionId: 'session-1', taskId: 'b5xsbzu5k' });
   });
@@ -392,7 +402,8 @@ describe('the background tasks strip, for tasks only the activity map has a word
     );
 
     // The chip is a plain label with the Stop beside it: nothing to click into.
-    expect(screen.getAllByRole('button').map((chip) => chip.getAttribute('aria-label'))).toEqual(['Stop']);
+    expect(rowButtons()).toEqual([]);
+    expect(screen.getAllByRole('button', { name: 'Stop' })).toHaveLength(1);
     const chip = screen.getByTitle(/Launched by one of this session's agents/);
     expect(chip.textContent).toBe('CommandSleep for 60 seconds');
     fireEvent.click(chip);
@@ -414,7 +425,7 @@ describe('the background tasks strip, for tasks only the activity map has a word
       />,
     );
 
-    expect(screen.getByRole('button').textContent).toBe('Workflowaudit· 0/1 agent · only');
+    expect(rowButtons()[0].textContent).toBe('Workflowaudit0/1 agent · only');
   });
 });
 
@@ -427,5 +438,62 @@ describe('visibleCountToReveal', () => {
   it('widens the window to the row plus a page of context when it is not', () => {
     // Row 106 of 942 needs 836 rows shown; a page more gives it some context above.
     expect(visibleCountToReveal(942, 106, 100)).toBe(836 + SESSION_MESSAGES_PAGE_SIZE);
+  });
+});
+
+describe('the background tasks panel, collapsed', () => {
+  it('shows only how many tasks run, and opens on click', () => {
+    preferences.backgroundTasksExpanded = false;
+    setPreference.mockClear();
+    try {
+      render(
+        <BackgroundTasksStrip
+          sessionId="session-1"
+          sendMessage={() => {}}
+          onReveal={() => {}}
+          onLoadAll={() => {}}
+          messages={[
+            toolRow({ toolName: 'Workflow', toolId: 'toolu_workflow_1', taskStatus: { status: 'running', workflowName: 'audit' } }),
+            toolRow({ toolName: 'Bash', toolId: 'toolu_bash_1', taskStatus: { status: 'running', description: 'npm test' } }),
+          ]}
+        />,
+      );
+
+      expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+      const header = screen.getByRole('button', { expanded: false });
+      expect(header.textContent).toBe('2 running');
+      fireEvent.click(header);
+      expect(setPreference).toHaveBeenCalledWith('backgroundTasksExpanded', true);
+    } finally {
+      preferences.backgroundTasksExpanded = true;
+    }
+  });
+});
+
+describe('the background tasks sidebar', () => {
+  const messages = [
+    toolRow({ toolName: 'Workflow', toolId: 'toolu_workflow_1', taskStatus: { status: 'running', workflowName: 'audit' } }),
+  ];
+
+  it('is a column beside the transcript while open, and hides the floating list on wide screens', () => {
+    render(<BackgroundTasksStrip variant="sidebar" sessionId="session-1" sendMessage={() => {}} onReveal={() => {}} onLoadAll={() => {}} messages={messages} />);
+    const aside = screen.getByRole('status');
+    expect(aside.tagName).toBe('ASIDE');
+    expect(aside.className).toContain('lg:flex');
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    cleanup();
+
+    render(<BackgroundTasksStrip sessionId="session-1" sendMessage={() => {}} onReveal={() => {}} onLoadAll={() => {}} messages={messages} />);
+    expect(screen.getByRole('status').className).toContain('lg:hidden');
+  });
+
+  it('renders nothing while closed; the floating pill stands in', () => {
+    preferences.backgroundTasksExpanded = false;
+    try {
+      const { container } = render(<BackgroundTasksStrip variant="sidebar" sessionId="session-1" sendMessage={() => {}} onReveal={() => {}} onLoadAll={() => {}} messages={messages} />);
+      expect(container.innerHTML).toBe('');
+    } finally {
+      preferences.backgroundTasksExpanded = true;
+    }
   });
 });
