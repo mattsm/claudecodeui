@@ -1,8 +1,10 @@
 import { memo } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { X } from 'lucide-react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
 
+import { useSetUiPreference, useUiPreferences } from '@/shared/context/UiPreferencesContext';
 import type { BackgroundTaskSummary, ChatMessage } from '@/shared/types';
 import {
   describeWorkflowAgent,
@@ -37,6 +39,12 @@ type BackgroundTasksStripProps = {
   onReveal: (message: ChatMessage) => void;
   /** Loads the rest of the transcript, for a task whose launch row is not loaded yet. */
   onLoadAll: () => void;
+  /**
+   * `floating` sits over the transcript's top right: the collapsed pill, and on
+   * narrow screens the open list too. `sidebar` is the open list as a column
+   * beside the transcript, on wide screens only. The pane renders both.
+   */
+  variant?: 'floating' | 'sidebar';
 };
 
 /** The one-line description the launch was given, as the card reads it. */
@@ -95,14 +103,35 @@ function describeTask(message: ChatMessage, t: TFunction) {
   return { kind, name, progress };
 }
 
+type TaskRow = {
+  key: string;
+  kind: string;
+  name: string;
+  progress: string;
+  /** Hover text for the row. */
+  title: string;
+  /** Scrolls to the task's card, or loads the page holding it; absent when no page of this transcript holds it. */
+  onOpen?: () => void;
+  /** The id `chat.stop-task` names; absent when the row has no id to stop it by. */
+  taskId?: string;
+};
+
+const Dot = () => (
+  <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-purple-500 dark:bg-purple-400" />
+);
+
 /**
- * Rendered by chat's ChatMessagesPane above the transcript: one chip per
- * background task — workflow, agent or command — that is still running, each
- * scrolling to its card when clicked and stoppable from its ✕. Renders
+ * Rendered by chat's ChatMessagesPane at the top right of the transcript: a
+ * collapsible list of the background tasks — workflows, agents, commands —
+ * that are still running. Collapsed it is one pill with the count; open, one
+ * row per task, each scrolling to its card when clicked and stoppable from its
+ * ✕. Open or closed is a UI preference, so it holds across sessions. Renders
  * nothing while nothing runs, which is most of the time.
  */
-export const BackgroundTasksStrip = memo(({ messages, tasks, sessionId, sendMessage, onReveal, onLoadAll }: BackgroundTasksStripProps) => {
+export const BackgroundTasksStrip = memo(({ messages, tasks, sessionId, sendMessage, onReveal, onLoadAll, variant = 'floating' }: BackgroundTasksStripProps) => {
   const { t } = useTranslation();
+  const { backgroundTasksExpanded: expanded } = useUiPreferences();
+  const setPreference = useSetUiPreference();
   const running = listRunningBackgroundLaunches(messages);
   // A loaded row that has a word on its task — settled or not — is the word;
   // a task whose row is not loaded, or is loaded without one (a backgrounded
@@ -117,92 +146,132 @@ export const BackgroundTasksStrip = memo(({ messages, tasks, sessionId, sendMess
     return null;
   }
 
-  return (
-    <div
-      role="status"
-      aria-label={t('workflow.backgroundTasks', 'Background tasks')}
-      className="flex max-w-full flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-background/95 px-2 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur"
+  const rows: TaskRow[] = [
+    ...running.map((message): TaskRow => {
+      const { kind, name, progress } = describeTask(message, t);
+      return {
+        key: message.toolId ?? `${kind}-${name}`,
+        kind,
+        name,
+        progress,
+        title: [kind, name, progress].filter(Boolean).join(' · '),
+        onOpen: () => onReveal(message),
+        taskId: readBackgroundTaskId(message),
+      };
+    }),
+    ...fromMap.map((task): TaskRow => {
+      const kind = task.taskType === 'local_workflow'
+        ? t('workflow.title', 'Workflow')
+        : task.taskType === 'local_bash'
+          ? t('workflow.backgroundCommand', 'Command')
+          : t('workflow.backgroundAgent', 'Agent');
+      const name = task.workflowName ?? task.description;
+      const base = [kind, name].filter(Boolean).join(' · ');
+      return {
+        key: task.taskId,
+        kind,
+        name,
+        progress: '',
+        // Launched by one of the session's agents: its row is in that agent's
+        // transcript, so no page of this one will ever hold it.
+        title: task.nested
+          ? `${base} · ${t('workflow.taskOfAgent', 'Launched by one of this session\'s agents')}`
+          : `${base} · ${t('workflow.taskRowNotLoaded', 'Launched earlier in this conversation; click to load it')}`,
+        onOpen: task.nested ? undefined : onLoadAll,
+        taskId: task.taskId,
+      };
+    }),
+  ];
+
+  const label = t('workflow.backgroundTasks', 'Background tasks');
+  const count = t('workflow.runningCount', { count: rows.length, defaultValue_one: '{{count}} running', defaultValue_other: '{{count}} running' });
+
+  const header = (
+    <button
+      type="button"
+      onClick={() => setPreference('backgroundTasksExpanded', !expanded)}
+      aria-expanded={expanded}
+      title={label}
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left hover:bg-muted hover:text-foreground"
     >
-      {running.map((message) => {
-        const { kind, name, progress } = describeTask(message, t);
-        const taskId = readBackgroundTaskId(message);
-        const title = [kind, name, progress].filter(Boolean).join(' · ');
-        return (
-          <span key={message.toolId} className="flex min-w-0 max-w-full items-center">
-            <button
-              type="button"
-              onClick={() => onReveal(message)}
-              title={title}
-              className="flex min-w-0 max-w-xs items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-muted hover:text-foreground"
-            >
-              <span className="h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-purple-500 dark:bg-purple-400" />
-              <span className="flex-shrink-0 font-medium text-foreground">{kind}</span>
-              {name && <span className="min-w-0 truncate">{name}</span>}
-              {progress && <span className="min-w-0 truncate text-muted-foreground/70">· {progress}</span>}
-            </button>
-            {sessionId && taskId && (
-              <button
-                type="button"
-                onClick={() => sendMessage({ type: 'chat.stop-task', sessionId, taskId })}
-                aria-label={t('workflow.stopTask', 'Stop')}
-                title={t('workflow.stopTask', 'Stop')}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-destructive"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </span>
-        );
-      })}
-      {fromMap.map((task) => {
-        const kind = task.taskType === 'local_workflow'
-          ? t('workflow.title', 'Workflow')
-          : task.taskType === 'local_bash'
-            ? t('workflow.backgroundCommand', 'Command')
-            : t('workflow.backgroundAgent', 'Agent');
-        const name = task.workflowName ?? task.description;
-        const label = (
+      {expanded ? <ChevronDown className="h-3 w-3 flex-shrink-0" /> : <ChevronRight className="h-3 w-3 flex-shrink-0" />}
+      <Dot />
+      <span className="font-medium text-foreground">{count}</span>
+    </button>
+  );
+
+  const list = (
+    <ul className="min-h-0 flex-1 overflow-y-auto border-t border-border/60 py-1">
+      {rows.map((row) => {
+        const content: ReactNode = (
           <>
-            <span className="h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-purple-500 dark:bg-purple-400" />
-            <span className="flex-shrink-0 font-medium text-foreground">{kind}</span>
-            {name && <span className="min-w-0 truncate">{name}</span>}
+            <Dot />
+            <span className="min-w-0 flex-1">
+              <span className="flex min-w-0 gap-1">
+                <span className="flex-shrink-0 font-medium text-foreground">{row.kind}</span>
+                {row.name && <span className="min-w-0 truncate">{row.name}</span>}
+              </span>
+              {row.progress && <span className="block truncate text-muted-foreground/70">{row.progress}</span>}
+            </span>
           </>
         );
         return (
-          <span key={task.taskId} className="flex min-w-0 max-w-full items-center">
-            {task.nested ? (
-              // Launched by one of the session's agents: its row is in that
-              // agent's transcript, so no page of this one will ever hold it.
-              <span
-                title={`${[kind, name].filter(Boolean).join(' · ')} · ${t('workflow.taskOfAgent', 'Launched by one of this session\'s agents')}`}
-                className="flex min-w-0 max-w-xs items-center gap-1.5 rounded px-1.5 py-0.5"
-              >
-                {label}
-              </span>
-            ) : (
+          <li key={row.key} className="flex items-start gap-1 px-1">
+            {row.onOpen ? (
               <button
                 type="button"
-                onClick={onLoadAll}
-                title={`${[kind, name].filter(Boolean).join(' · ')} · ${t('workflow.taskRowNotLoaded', 'Launched earlier in this conversation; click to load it')}`}
-                className="flex min-w-0 max-w-xs items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-muted hover:text-foreground"
+                onClick={row.onOpen}
+                title={row.title}
+                className="flex min-w-0 flex-1 items-start gap-1.5 rounded px-1.5 py-1 text-left hover:bg-muted hover:text-foreground"
               >
-                {label}
+                {content}
               </button>
+            ) : (
+              <span title={row.title} className="flex min-w-0 flex-1 items-start gap-1.5 px-1.5 py-1">{content}</span>
             )}
-            {sessionId && (
+            {sessionId && row.taskId && (
               <button
                 type="button"
-                onClick={() => sendMessage({ type: 'chat.stop-task', sessionId, taskId: task.taskId })}
+                onClick={() => sendMessage({ type: 'chat.stop-task', sessionId, taskId: row.taskId })}
                 aria-label={t('workflow.stopTask', 'Stop')}
                 title={t('workflow.stopTask', 'Stop')}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-destructive"
+                className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-destructive"
               >
                 <X className="h-3 w-3" />
               </button>
             )}
-          </span>
+          </li>
         );
       })}
+    </ul>
+  );
+
+  if (variant === 'sidebar') {
+    if (!expanded) {
+      return null;
+    }
+    return (
+      <aside
+        role="status"
+        aria-label={label}
+        className="hidden w-72 flex-shrink-0 flex-col border-l border-border/60 bg-background text-[11px] text-muted-foreground lg:flex"
+      >
+        <div className="px-1 py-1">{header}</div>
+        {list}
+      </aside>
+    );
+  }
+
+  return (
+    <div
+      role="status"
+      aria-label={label}
+      className={`flex max-h-[60vh] w-72 max-w-[calc(100vw-2rem)] flex-col rounded-md border border-border/60 bg-background/95 text-[11px] text-muted-foreground shadow-sm backdrop-blur ${
+        expanded ? 'lg:hidden' : ''
+      }`}
+    >
+      {header}
+      {expanded && list}
     </div>
   );
 });

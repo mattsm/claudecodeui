@@ -16,6 +16,7 @@ export type UiPreferences = {
   sidebarVisible: boolean;
   keepProjectsExpanded: boolean;
   voiceEnabled: boolean;
+  backgroundTasksExpanded: boolean;
 };
 
 export type UiPreferenceKey = keyof UiPreferences;
@@ -31,6 +32,7 @@ const DEFAULTS: UiPreferences = {
   sidebarVisible: true,
   keepProjectsExpanded: false,
   voiceEnabled: false,
+  backgroundTasksExpanded: false,
 };
 
 const PREFERENCE_KEYS = Object.keys(DEFAULTS) as UiPreferenceKey[];

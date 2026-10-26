@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import '@/modules/i18n';
 import ChatMessagesPane from '@/modules/chat/transcript/ChatMessagesPane';
+import { UiPreferencesProvider } from '@/shared/context/UiPreferencesContext';
 import type { ChatMessage, NormalizedMessage, Project, ProjectSession } from '@/shared/types';
 
 /**
@@ -92,7 +93,7 @@ function renderPane(overrides: Partial<ComponentProps<typeof ChatMessagesPane>> 
     ...overrides,
   } as ComponentProps<typeof ChatMessagesPane>;
 
-  const view = render(<ChatMessagesPane {...props} />);
+  const view = render(<UiPreferencesProvider><ChatMessagesPane {...props} /></UiPreferencesProvider>);
   return { ...view, loadOlderMessagesPage, loadAllMessages };
 }
 
