@@ -5,13 +5,17 @@ import {
   Mic,
   Moon,
   Sun,
+  ZoomOut,
   type LucideIcon,
 } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { DarkModeToggle } from '@/shared/ui';
 import { LanguageSelector } from '@/modules/i18n';
 import { SETTING_ROW_CLASS } from '@/shared/constants';
+import { INTERFACE_SCALES, readInterfaceScale, writeInterfaceScale } from '@/shared/interfaceScale';
+import type { InterfaceScale } from '@/shared/interfaceScale';
 import type { PreferenceToggleKey, QuickSettingsPreferences } from '@/shared/types';
 import QuickSettingsSection from '@/modules/quick-settings-panel/QuickSettingsSection';
 import QuickSettingsToggleRow from '@/modules/quick-settings-panel/QuickSettingsToggleRow';
@@ -62,6 +66,7 @@ export default function QuickSettingsContent({
   onPreferenceChange,
 }: QuickSettingsContentProps) {
   const { t } = useTranslation('settings');
+  const [interfaceScale, setInterfaceScale] = useState<InterfaceScale>(readInterfaceScale);
   const inputSettingToggles = preferences.voiceEnabled
     ? INPUT_SETTING_TOGGLES
     : INPUT_SETTING_TOGGLES.filter(({ key }) => key !== 'voiceEnabled');
@@ -91,6 +96,29 @@ export default function QuickSettingsContent({
             {t('quickSettings.darkMode')}
           </span>
           <DarkModeToggle />
+        </div>
+        <div className={SETTING_ROW_CLASS}>
+          <span className="flex items-center gap-2 text-sm text-foreground">
+            <ZoomOut className="h-4 w-4 text-muted-foreground" />
+            {t('quickSettings.interfaceScale', { defaultValue: 'Interface size' })}
+          </span>
+          <div role="radiogroup" aria-label={t('quickSettings.interfaceScale', { defaultValue: 'Interface size' })} className="flex overflow-hidden rounded-md border border-border/60 text-xs">
+            {INTERFACE_SCALES.map((scale) => (
+              <button
+                key={scale}
+                type="button"
+                role="radio"
+                aria-checked={interfaceScale === scale}
+                onClick={() => {
+                  writeInterfaceScale(scale);
+                  setInterfaceScale(scale);
+                }}
+                className={`px-2 py-1 ${interfaceScale === scale ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+              >
+                {scale}%
+              </button>
+            ))}
+          </div>
         </div>
         <LanguageSelector compact />
       </QuickSettingsSection>

@@ -73,6 +73,7 @@
       "inputSettings": "Input Settings"
     },
     "darkMode": "Dark Mode",
+    "interfaceScale": "Interface size",
     "showRawParameters": "Show raw parameters",
     "showThinking": "Show thinking",
     "sendByCtrlEnter": "Send by Ctrl+Enter",

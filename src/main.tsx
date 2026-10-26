@@ -4,10 +4,14 @@ import { scan } from 'react-scan'
 
 import App from '@/App'
 import '@/index.css'
+import { applyInterfaceScale, readInterfaceScale } from '@/shared/interfaceScale'
 import 'katex/dist/katex.min.css'
 
 // Initialize i18n
 import '@/modules/i18n'
+
+// Before the first paint, so the page does not render at one size and jump.
+applyInterfaceScale(readInterfaceScale())
 
 // React Scan is a render-diagnostics overlay, and an expensive one: measured on
 // this app it roughly halves the dev frame rate, adds ~14 MB of heap and injects
