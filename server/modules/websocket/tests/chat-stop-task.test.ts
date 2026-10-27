@@ -150,6 +150,7 @@ async function withHeldSession(
       {
         runtime: {
           hasBackgroundWork: (sessionId: string) => hasBackgroundWork && sessionId === SESSION_ID,
+          hasLiveSession: (sessionId: string) => hasBackgroundWork && sessionId === SESSION_ID,
           abort: async (provider: string, sessionId: string) => {
             aborts.push({ provider, sessionId });
             return true;
@@ -183,6 +184,70 @@ test('chat.abort on a session holding only background work stops it through its 
 
 test('chat.abort on an idle session is still refused with NO_ACTIVE_RUN', async () => {
   await withHeldSession(false, async ({ socket, aborts }) => {
+    socket.emit('message', JSON.stringify({ type: 'chat.abort', sessionId: SESSION_ID }));
+    await settle();
+
+    assert.equal(aborts.length, 0);
+    assert.equal(socket.frames.at(-1)?.code, 'NO_ACTIVE_RUN');
+  });
+});
+
+/** A gateway whose runtime holds a live process for SESSION_ID, with no run in progress. */
+async function withLiveSession(
+  live: boolean,
+  runTest: (context: { socket: ReturnType<typeof createFakeSocket>; aborts: string[] }) => Promise<void>,
+): Promise<void> {
+  const previousDatabasePath = process.env.DATABASE_PATH;
+  const tempDirectory = await mkdtemp(path.join(os.tmpdir(), 'chat-stop-task-'));
+
+  closeConnection();
+  process.env.DATABASE_PATH = path.join(tempDirectory, 'auth.db');
+  await initializeDatabase();
+
+  const aborts: string[] = [];
+  const socket = createFakeSocket();
+
+  try {
+    sessionsDb.createAppSession(SESSION_ID, 'claude', tempDirectory);
+    handleChatConnection(
+      socket as never,
+      { user: { id: 1 } } as never,
+      {
+        runtime: {
+          hasLiveSession: (sessionId: string) => live && sessionId === SESSION_ID,
+          abort: async (_provider: string, sessionId: string) => {
+            aborts.push(sessionId);
+            return true;
+          },
+        } as never,
+      },
+    );
+    await runTest({ socket, aborts });
+  } finally {
+    connectedClients.clear();
+    chatRunRegistry.clearAll();
+    closeConnection();
+    if (previousDatabasePath === undefined) {
+      delete process.env.DATABASE_PATH;
+    } else {
+      process.env.DATABASE_PATH = previousDatabasePath;
+    }
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+test('chat.abort with no run on record stops a live process the runtime holds', async () => {
+  await withLiveSession(true, async ({ socket, aborts }) => {
+    socket.emit('message', JSON.stringify({ type: 'chat.abort', sessionId: SESSION_ID }));
+    await settle();
+
+    assert.deepEqual(aborts, [SESSION_ID]);
+    assert.deepEqual(socket.frames, []);
+  });
+});
+
+test('chat.abort with no run and no live process is refused with NO_ACTIVE_RUN', async () => {
+  await withLiveSession(false, async ({ socket, aborts }) => {
     socket.emit('message', JSON.stringify({ type: 'chat.abort', sessionId: SESSION_ID }));
     await settle();
 
