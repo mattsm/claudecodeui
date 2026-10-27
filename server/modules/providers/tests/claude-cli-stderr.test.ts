@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  CLI_BG_TERMINATED_PATTERN,
   createCliStderrChunker,
   createCliStderrEmitter,
   createCliStderrFormatter,
@@ -421,4 +422,11 @@ test('claude cli stderr: blank lines are ignored and do not consume the window',
   h.push('real line');
 
   assert.deepEqual(h.written, ['[claude-cli-stderr] tag real line']);
+});
+
+test('claude cli: the ceiling kill line is recognised, with its duration', () => {
+  const line = 'Background tasks still running after 1800s; terminating. '
+    + 'Set CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 to wait indefinitely.';
+  assert.equal(CLI_BG_TERMINATED_PATTERN.exec(line)?.[1], '1800');
+  assert.equal(CLI_BG_TERMINATED_PATTERN.exec('Background tasks finished'), null);
 });

@@ -227,6 +227,9 @@ export function shouldReleaseOnSilence({ outstanding, heldSinceMs, nowMs, hardCe
   return hardCeilingMs > 0 && nowMs - heldSinceMs >= hardCeilingMs;
 }
 
+/** The line the CLI writes when its background-wait ceiling ends the run. */
+export const CLI_BG_TERMINATED_PATTERN = /Background tasks still running after (\d+)s; terminating/;
+
 const TOOLS_REQUIRING_INTERACTION = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
 // Ultracode is a session-scoped setting rather than an SDK effort level: it pairs xhigh
@@ -1658,8 +1661,27 @@ async function queryClaudeSDK(
       ),
     });
 
+    // The ceiling kill is otherwise silent in the chat: the tasks vanish and
+    // nothing reports. Say so where the user is looking.
+    const onStderrLine = (line: string) => {
+      const terminated = CLI_BG_TERMINATED_PATTERN.exec(line);
+      if (terminated) {
+        const minutes = Math.round(Number(terminated[1]) / 60);
+        ws.send(createNormalizedMessage({
+          kind: 'error',
+          content: `Background work was stopped by the Claude CLI after ${minutes} min (its wait limit). Anything it had not reported yet is lost.`,
+          sessionId: capturedSessionId || sessionId || null,
+          provider: 'claude',
+        }));
+        if (sessionKey()) {
+          backgroundWork.clear(sessionKey()!);
+        }
+      }
+      stderrEmitter?.push(line);
+    };
+
     stderrChunker = createCliStderrChunker(
-      stderrEmitter.push,
+      onStderrLine,
       undefined,
       (discardedChars: number) => console.error(
         `[claude-cli-stderr] ${sessionTag()} [oversized line: discarded ${discardedChars} chars without a newline]`,
