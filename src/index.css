@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* A row reached with Alt+↑/↓: a short highlight so the eye finds it. */
+@keyframes chat-jump-flash {
+  0% { box-shadow: 0 0 0 2px hsl(var(--primary) / 0.55); }
+  100% { box-shadow: 0 0 0 2px hsl(var(--primary) / 0); }
+}
+
+.chat-jump-flash {
+  border-radius: 1rem;
+  animation: chat-jump-flash 1.5s ease-out;
+}
+
 /* Global spinner animation - defined early to ensure it loads */
 @keyframes spin {
   0% {

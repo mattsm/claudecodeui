@@ -19,6 +19,7 @@ import ToolGroupContainer from '@/modules/chat/transcript/ToolGroupContainer';
 import LoadAllMessagesOverlay from '@/modules/chat/transcript/LoadAllMessagesOverlay';
 import ChatExportMenu from '@/modules/chat/transcript/ChatExportMenu';
 import { BackgroundTasksStrip } from '@/modules/chat/transcript/BackgroundTasksStrip';
+import { useOwnMessageJump } from '@/modules/chat/hooks/useOwnMessageJump';
 
 /**
  * How many of the newest rows mount with real content on the first commit,
@@ -151,6 +152,12 @@ function ChatMessagesPane({
 }: ChatMessagesPaneProps) {
   const { t } = useTranslation('chat');
   const lazyRows = useLazyRowObserver(scrollContainerRef);
+  useOwnMessageJump({
+    messages: chatMessages,
+    revealMessage,
+    scrollContainerRef,
+    sessionKey: selectedSession?.id || currentSessionId,
+  });
   const groupedVisibleMessages = useMemo(
     () => groupConsecutiveTools(visibleMessages, Boolean(showThinking)),
     [visibleMessages, showThinking],
