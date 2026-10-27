@@ -1,6 +1,12 @@
 import type { NormalizedMessage } from '@/shared/types';
 
 export const SESSION_MESSAGES_PAGE_SIZE = 20;
+/**
+ * Older history is fetched in bigger pages than the first one: a tool-heavy
+ * page of 20 can be shorter than the screen, so scrolling up fetched on almost
+ * every step. The server serves pages from its cached transcript.
+ */
+export const OLDER_MESSAGES_PAGE_SIZE = 100;
 
 export type SessionMessagesRequestOptions = {
   limit?: number | null;

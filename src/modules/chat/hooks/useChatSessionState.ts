@@ -4,7 +4,7 @@ import type { MutableRefObject } from 'react';
 import { api } from '@/shared/api';
 import type { MarkSessionIdle, SessionActivityMap,Project,ProjectSession,LLMProvider,NormalizedMessage,ChatMessage,DiffCalculator } from '@/shared/types';
 import type { SessionStore } from '@/modules/chat/hooks/useSessionStore';
-import { SESSION_MESSAGES_PAGE_SIZE } from '@/modules/chat/utils/sessionMessagePagination';
+import { OLDER_MESSAGES_PAGE_SIZE, SESSION_MESSAGES_PAGE_SIZE } from '@/modules/chat/utils/sessionMessagePagination';
 import { createMessageHistoryRefreshCoordinator } from '@/modules/chat/utils/messageHistoryRefreshCoordinator';
 import { createCachedDiffCalculator } from '@/modules/chat/utils/messageTransforms';
 import { normalizedToChatMessages } from '@/modules/chat/hooks/useChatMessages';
@@ -479,11 +479,10 @@ export function useChatSessionState({
 
       isLoadingMoreRef.current = true;
       setIsLoadingMoreMessages(true);
-      const scrollRestoreState = captureScrollRestoreState(container);
 
       try {
         const result = await sessionStore.fetchMore(selectedSession.id, {
-          limit: SESSION_MESSAGES_PAGE_SIZE,
+          limit: OLDER_MESSAGES_PAGE_SIZE,
           canRequest: () => (
             isActiveRef.current
             && activeSessionIdRef.current === selectedSession.id
@@ -510,8 +509,12 @@ export function useChatSessionState({
           return false;
         }
 
-        pendingScrollRestoreRef.current = scrollRestoreState;
-        setVisibleMessageCount((prev) => prev + SESSION_MESSAGES_PAGE_SIZE);
+        // Captured now, not when the request went out: the reader keeps
+        // scrolling while it is in flight, and restoring to where they were
+        // then would undo that. The older rows render only once the window
+        // grows below, so the page is not in the DOM yet.
+        pendingScrollRestoreRef.current = captureScrollRestoreState(container);
+        setVisibleMessageCount((prev) => prev + prependedCount);
         if (!slot.hasMore) {
           allMessagesLoadedRef.current = true;
           setAllMessagesLoaded(true);
@@ -560,16 +563,37 @@ export function useChatSessionState({
       wasNearTopRef.current = false;
     }
 
+    // Fetch the next older page while there is still well over a screen of
+    // history above, so it is in place before the reader reaches the top
+    // rather than after they have stopped there and waited.
+    const prefetchZone = Math.max(100, container.clientHeight * 4);
     if (!allMessagesLoadedRef.current) {
-      if (!scrolledNearTop) { topLoadLockRef.current = false; return; }
+      if (container.scrollTop >= prefetchZone) { topLoadLockRef.current = false; return; }
       if (topLoadLockRef.current) {
         if (container.scrollTop > 20) topLoadLockRef.current = false;
         return;
       }
       const didLoad = await loadOlderMessages(container);
-      if (didLoad) topLoadLockRef.current = true;
+      if (didLoad && container.scrollTop < 20) topLoadLockRef.current = true;
     }
   }, [hasMoreMessages, isActive, isNearBottom, loadOlderMessages]);
+
+  // One older page is fetched shortly after a session opens, so the first
+  // scroll up starts with history already in place above the screen instead
+  // of waiting on the network at the top.
+  const warmedOlderSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    const sessionId = selectedSession?.id ?? null;
+    if (!isActive || !sessionId || isLoadingSessionMessages || !hasMoreMessages) return undefined;
+    if (warmedOlderSessionRef.current === sessionId) return undefined;
+    const timer = window.setTimeout(() => {
+      const container = scrollContainerRef.current;
+      if (!container || activeSessionIdRef.current !== sessionId) return;
+      warmedOlderSessionRef.current = sessionId;
+      void loadOlderMessages(container);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [hasMoreMessages, isActive, isLoadingSessionMessages, loadOlderMessages, selectedSession?.id]);
 
   const wasChatActiveRef = useRef(isActive);
   useLayoutEffect(() => {
