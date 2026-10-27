@@ -494,6 +494,80 @@ const ensureProjectsForSessionPaths = (db: Database): void => {
   `);
 };
 
+type LegacyQueuedMessage = { content: string; options?: unknown; attachments: unknown[] };
+
+const readLegacyQueuedMessage = (raw: string): LegacyQueuedMessage | null => {
+  try {
+    const parsed = JSON.parse(raw) as { content?: unknown; options?: unknown; attachments?: unknown };
+    if (typeof parsed?.content !== 'string') {
+      return null;
+    }
+    return {
+      content: parsed.content,
+      ...(parsed.options !== undefined ? { options: parsed.options } : {}),
+      attachments: Array.isArray(parsed.attachments) ? parsed.attachments : [],
+    };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Local builds kept queued messages in a `queued_messages` table, one row per
+ * message. The upstream queue keeps one message per session in
+ * `session_drafts.queued_message` and joins follow-ups into it, so rows still
+ * waiting are merged in there, in the order they were queued, and the table is
+ * dropped. A slash command cannot share a turn with other text; one that would
+ * have to is logged instead of being merged.
+ */
+const moveLocalQueuedMessagesIntoDrafts = (db: Database): void => {
+  if (!tableExists(db, 'queued_messages')) {
+    return;
+  }
+
+  console.log('Running migration: Moving queued_messages rows into session_drafts');
+  const rows = db.prepare(
+    'SELECT user_id, session_id, message FROM queued_messages ORDER BY created_at ASC, rowid ASC',
+  ).all() as Array<{ user_id: number; session_id: string; message: string }>;
+  const userExists = db.prepare('SELECT 1 FROM users WHERE id = ?');
+  const readWaiting = db.prepare('SELECT queued_message FROM session_drafts WHERE user_id = ? AND draft_scope = ?');
+  const writeWaiting = db.prepare(
+    `INSERT INTO session_drafts (user_id, draft_scope, draft_text, queued_message, updated_at)
+     VALUES (?, ?, '', ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(user_id, draft_scope) DO UPDATE SET
+       queued_message = excluded.queued_message,
+       updated_at = CURRENT_TIMESTAMP`,
+  );
+
+  db.transaction(() => {
+    for (const row of rows) {
+      const message = readLegacyQueuedMessage(row.message);
+      // A draft must belong to a user; one whose user is gone has no one to send it.
+      if (!message || !userExists.get(row.user_id)) {
+        continue;
+      }
+      const stored = readWaiting.get(row.user_id, row.session_id) as { queued_message: string | null } | undefined;
+      const waiting = stored?.queued_message ? readLegacyQueuedMessage(stored.queued_message) : null;
+      if (waiting && (waiting.content.trimStart().startsWith('/') || message.content.trimStart().startsWith('/'))) {
+        console.warn('Queued message not carried over (a slash command cannot share a turn)', {
+          sessionId: row.session_id,
+          content: message.content,
+        });
+        continue;
+      }
+      const merged: LegacyQueuedMessage = waiting
+        ? {
+          content: [waiting.content, message.content].filter((part) => part.trim()).join('\n\n'),
+          ...((message.options ?? waiting.options) !== undefined ? { options: message.options ?? waiting.options } : {}),
+          attachments: [...waiting.attachments, ...message.attachments],
+        }
+        : message;
+      writeWaiting.run(row.user_id, row.session_id, JSON.stringify(merged));
+    }
+    db.exec('DROP TABLE queued_messages');
+  })();
+};
+
 export const runMigrations = (db: Database) => {
   try {
     const usersTableInfo = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
@@ -525,6 +599,7 @@ export const runMigrations = (db: Database) => {
     addProviderModelEffortColumns(db);
     db.exec(USER_PREFERENCES_TABLE_SCHEMA_SQL);
     db.exec(SESSION_DRAFTS_TABLE_SCHEMA_SQL);
+    moveLocalQueuedMessagesIntoDrafts(db);
     db.exec(SUPERSEDED_PROVIDER_SESSIONS_TABLE_SCHEMA_SQL);
     addSupersededTranscriptPathColumn(db);
 
