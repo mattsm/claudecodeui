@@ -1394,6 +1394,7 @@ export type ProviderCliUpdateResult = {
 export type PreferenceToggleKey =
   | 'showRawParameters'
   | 'showThinking'
+  | 'expandThinking'
   | 'sendByCtrlEnter'
   | 'voiceEnabled';
 

@@ -32,6 +32,8 @@ export type ReasoningProps = {
   isStreaming?: boolean;
   open?: boolean;
   defaultOpen?: boolean;
+  /** Opens the block and keeps it open after streaming; turning it off closes it. */
+  expanded?: boolean;
   onOpenChange?: (open: boolean) => void;
   duration?: number;
 } & React.HTMLAttributes<HTMLDivElement>;
@@ -43,12 +45,13 @@ export const Reasoning = React.memo<ReasoningProps>(
     isStreaming = false,
     open: controlledOpen,
     defaultOpen,
+    expanded = false,
     onOpenChange,
     duration: durationProp,
     children,
     ...props
   }) => {
-    const resolvedDefaultOpen = defaultOpen ?? isStreaming;
+    const resolvedDefaultOpen = defaultOpen ?? (expanded || isStreaming);
     const isExplicitlyClosed = defaultOpen === false;
 
     // Controllable open state
@@ -94,16 +97,25 @@ export const Reasoning = React.memo<ReasoningProps>(
       }
     }, [isStreaming, isOpen, setIsOpen, isExplicitlyClosed]);
 
+    // Follow the expand preference when it is flipped; the block can still be
+    // toggled by hand afterwards.
+    const previousExpandedRef = React.useRef(expanded);
+    React.useEffect(() => {
+      if (previousExpandedRef.current === expanded) return;
+      previousExpandedRef.current = expanded;
+      setIsOpen(expanded);
+    }, [expanded, setIsOpen]);
+
     // Auto-close after streaming ends
     React.useEffect(() => {
-      if (hasEverStreamedRef.current && !isStreaming && isOpen && !hasAutoClosed) {
+      if (!expanded && hasEverStreamedRef.current && !isStreaming && isOpen && !hasAutoClosed) {
         const timer = setTimeout(() => {
           setIsOpen(false);
           setHasAutoClosed(true);
         }, AUTO_CLOSE_DELAY);
         return () => clearTimeout(timer);
       }
-    }, [isStreaming, isOpen, setIsOpen, hasAutoClosed]);
+    }, [expanded, isStreaming, isOpen, setIsOpen, hasAutoClosed]);
 
     const contextValue = React.useMemo(
       () => ({ duration, isOpen, isStreaming, setIsOpen }),

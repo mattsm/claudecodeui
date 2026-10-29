@@ -15,6 +15,7 @@ import MessageCopyControl from '@/modules/chat/transcript/MessageCopyControl';
 import MessageModelLabel from '@/modules/chat/transcript/MessageModelLabel';
 import MessageSpeakControl from '@/modules/chat/transcript/MessageSpeakControl';
 import { useIsExportingTranscript } from '@/modules/chat/context/TranscriptRenderContext';
+import { useOptionalUiPreferences } from '@/shared/context/UiPreferencesContext';
 import { MemoryCitations } from '@/modules/chat/transcript/MemoryCitations';
 
 type MessageComponentProps = {
@@ -76,6 +77,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
   // also pull in browser-only voice state that a document render has no
   // provider for.
   const isExporting = useIsExportingTranscript();
+  const expandThinking = useOptionalUiPreferences()?.expandThinking ?? false;
   const shouldShowUserCopyControl = !isExporting && message.type === 'user' && userCopyContent.trim().length > 0;
   const shouldShowAssistantCopyControl = !isExporting &&
     message.type === 'assistant' &&
@@ -325,7 +327,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               </>
             ) : message.isThinking ? (
               /* Thinking messages — Reasoning component (ai-elements pattern) */
-              <Reasoning defaultOpen={isExporting}>
+              <Reasoning defaultOpen={isExporting || undefined} expanded={expandThinking}>
                 <ReasoningTrigger />
                 <ReasoningContent>
                   <Markdown className="prose prose-sm prose-gray max-w-none font-serif dark:prose-invert">
@@ -342,7 +344,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               <div dir="auto" className="text-sm text-gray-700 dark:text-gray-300">
                 {/* Reasoning accordion */}
                 {showThinking && message.reasoning && (
-                  <Reasoning className="mb-3" defaultOpen={false}>
+                  <Reasoning className="mb-3" expanded={expandThinking}>
                     <ReasoningTrigger />
                     <ReasoningContent>
                       <div className="whitespace-pre-wrap">
