@@ -27,7 +27,6 @@ import {
   useSessionProtectionActions,
 } from '@/shared/context/SessionProtectionContext';
 import ChatMessagesPane from '@/modules/chat/transcript/ChatMessagesPane';
-import ExpandThinkingToggle from '@/modules/chat/transcript/ExpandThinkingToggle';
 import ChatComposer from '@/modules/chat/composer/ChatComposer';
 import CommandResultModal from '@/modules/chat/modals/CommandResultModal';
 import { SessionHandoffButton } from '@/modules/chat/modals/SessionHandoffButton';
@@ -547,9 +546,6 @@ function ChatInterface({
         </MarkdownWorkspaceContext.Provider>
 
         <div className="relative flex-shrink-0">
-          <div className="pointer-events-none absolute -top-11 right-3 z-20 flex">
-            <ExpandThinkingToggle />
-          </div>
           {isUserScrolledUp && chatMessages.length > 0 && (
             <div className="pointer-events-none absolute -top-11 left-0 right-0 z-20 flex justify-center">
               <button

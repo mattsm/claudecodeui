@@ -62,7 +62,6 @@ vi.mock('@/modules/chat/hooks/useChatComposerState', () => ({
 }));
 vi.mock('@/modules/chat/hooks/useSessionStore', () => ({ useSessionStore: () => ({}) }));
 vi.mock('@/modules/chat/transcript/ChatMessagesPane', () => ({ default: () => null }));
-vi.mock('@/modules/chat/transcript/ExpandThinkingToggle', () => ({ default: () => null }));
 vi.mock('@/modules/chat/composer/ChatComposer', () => ({ default: () => null }));
 vi.mock('@/modules/chat/modals/CommandResultModal', () => ({ default: () => null }));
 

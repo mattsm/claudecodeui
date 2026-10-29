@@ -89,6 +89,11 @@ export function useOptionalUiPreferences(): UiPreferences | null {
   return useContext(UiPreferencesStateContext);
 }
 
+/** The setter, or null outside a provider. */
+export function useOptionalSetUiPreference(): UiPreferenceActions['setPreference'] | null {
+  return useContext(UiPreferencesActionsContext)?.setPreference ?? null;
+}
+
 /** Stable setter, so writers never re-render on a preference change. */
 export function useSetUiPreference(): UiPreferenceActions['setPreference'] {
   const actions = useContext(UiPreferencesActionsContext);
