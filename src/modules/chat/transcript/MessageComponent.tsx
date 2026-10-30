@@ -17,6 +17,7 @@ import MessageSpeakControl from '@/modules/chat/transcript/MessageSpeakControl';
 import { useIsExportingTranscript } from '@/modules/chat/context/TranscriptRenderContext';
 import { useOptionalUiPreferences } from '@/shared/context/UiPreferencesContext';
 import { MemoryCitations } from '@/modules/chat/transcript/MemoryCitations';
+import { formatMessageTimestamp } from '@/modules/chat/utils/messageTimestamp';
 
 type MessageComponentProps = {
   message: ChatMessage;
@@ -86,7 +87,10 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
     !message.isThinking;
 
 
-  const formattedTime = useMemo(() => new Date(message.timestamp).toLocaleTimeString(), [message.timestamp]);
+  const timestampLabels = useMemo(() => formatMessageTimestamp(message.timestamp), [message.timestamp]);
+  const formattedTime = timestampLabels ? (
+    <time dateTime={timestampLabels.iso} title={timestampLabels.full}>{timestampLabels.short}</time>
+  ) : null;
   const shouldHideThinkingMessage = Boolean(message.isThinking && !showThinking);
 
   if (shouldHideThinkingMessage) {
@@ -148,13 +152,13 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                   {shouldShowUserCopyControl && (
                     <MessageCopyControl content={userCopyContent} messageType="user" />
                   )}
-                  <span>{formattedTime}</span>
+                  {formattedTime}
                 </div>
               </div>
             ) : (
               /* Attachment-only turn: no text bubble, but the timestamp still shows */
               <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                <span>{formattedTime}</span>
+                {formattedTime}
               </div>
             )}
           </div>
@@ -424,7 +428,8 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                     copy and speak it is not gated on the copy control, and an
                     exported transcript keeps it wherever the footer renders. */}
                 <MessageModelLabel model={message.model} />
-                {!isGrouped && <span>{formattedTime}</span>}
+                {/* On every footer, so the end of a long reply says when it ended. */}
+                {formattedTime}
               </div>
             )}
           </div>
