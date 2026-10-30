@@ -82,6 +82,12 @@ function parseTaskNotification(content: string): ParsedTaskNotification | null {
  */
 /** The CLI acknowledges a compaction in the stream with the bare word. */
 const COMPACTION_NOTICE = /^Compacted\.?$/;
+/**
+ * How every compaction summary opens. A copy can reach the client without the
+ * `isCompactSummary` flag, as user or assistant text, and would otherwise
+ * render as a page-long message.
+ */
+const CONTINUATION_SUMMARY = /^This session is being continued from a previous conversation/;
 
 /**
  * Draws a compaction as one row, whichever order its parts arrive in.
@@ -119,15 +125,21 @@ function appendCompactionRow(
     return true;
   }
 
-  if (msg.isCompactSummary) {
+  if (msg.isCompactSummary || (msg.kind === 'text' && CONTINUATION_SUMMARY.test(text))) {
     state.foldedSummaries.add(text);
 
     // The unflagged copy is wherever the stream put it, not necessarily the row
     // directly above, so it is searched for — newest first, ordinary rows only.
     for (let index = converted.length - 1; index >= 0; index -= 1) {
       const row = converted[index];
-      // Assistant rows only: a user who pastes the same text is not a duplicate.
-      if (row.type === 'assistant' && !row.compact && (row.content || '').trim() === text) {
+      // Assistant rows, or any row that is itself a summary: a user who pastes
+      // ordinary text is not a duplicate.
+      const rowText = (row.content || '').trim();
+      if (
+        !row.compact
+        && rowText === text
+        && (row.type === 'assistant' || CONTINUATION_SUMMARY.test(rowText))
+      ) {
         converted.splice(index, 1);
         break;
       }

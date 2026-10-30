@@ -52,6 +52,28 @@ describe('compaction rows', () => {
       .toMatchObject([{ content: 'work' }, { compactSummary: 'The summary body' }]);
   });
 
+  it('folds an unflagged summary, user or assistant, by how it opens', () => {
+    const body = 'This session is being continued from a previous conversation that ran out of context. Summary.';
+
+    for (const role of ['user', 'assistant'] as const) {
+      const converted = normalizedToChatMessages([boundary(), row({ role, content: body })]);
+      expect(converted).toHaveLength(1);
+      expect(converted[0].compactSummary).toBe(body);
+    }
+  });
+
+  it('drops an unflagged user copy that arrives before the flagged summary', () => {
+    const body = 'This session is being continued from a previous conversation that ran out of context. Summary.';
+    const converted = normalizedToChatMessages([
+      row({ role: 'user', content: body }),
+      boundary(),
+      row({ content: body, isCompactSummary: true }),
+    ]);
+
+    expect(converted).toHaveLength(1);
+    expect(converted[0].compactSummary).toBe(body);
+  });
+
   it("drops the CLI's one-word acknowledgement beside a real row, and keeps it without one", () => {
     expect(normalizedToChatMessages([row({ content: 'Compacted' }), boundary()]))
       .toMatchObject([{ content: 'Compacted · manual · 335k → 10k tokens · 2m 22s' }]);
