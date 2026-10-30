@@ -447,6 +447,14 @@ export const sessionsDb = {
     ).run(effort, sessionId);
   },
 
+  /** Every unarchived session's custom name, for spotting renames made outside the server. */
+  listSessionCustomNames(): Array<{ session_id: string; custom_name: string | null }> {
+    const db = getConnection();
+    return db
+      .prepare('SELECT session_id, custom_name FROM sessions WHERE isArchived = 0')
+      .all() as Array<{ session_id: string; custom_name: string | null }>;
+  },
+
   updateSessionCustomName(sessionId: string, customName: string): void {
     const db = getConnection();
     db.prepare(

@@ -13,7 +13,9 @@ import { rateLimit } from 'express-rate-limit';
 import { AppError, findApplicationRoot, getModuleDirectory, IS_PLATFORM, terminalTextStyles } from '@/shared/utils.js';
 import {
     closeSessionsWatcher,
+    closeSessionTitleWatcher,
     initializeSessionsWatcher,
+    initializeSessionTitleWatcher,
     providerRuntimeService,
 } from '@/modules/providers/index.js';
 import { chatRunRegistry, createWebSocketServer } from '@/modules/websocket/index.js';
@@ -379,6 +381,7 @@ async function startServer() {
 
             // Start watching the projects folder for changes
             await initializeSessionsWatcher();
+            initializeSessionTitleWatcher();
             // Sends anything that came due while the server was not running,
             // then keeps polling.
             initializeScheduledMessageDispatcher(providerRuntimeService);
@@ -390,6 +393,7 @@ async function startServer() {
         });
 
         await closeSessionsWatcher();
+        closeSessionTitleWatcher();
         closeScheduledMessageDispatcher();
         // Clean up plugin processes on shutdown
         const shutdownRuntimeServices = async () => {

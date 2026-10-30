@@ -772,6 +772,10 @@ export const sessionsService = {
     }
 
     sessionsDb.updateSessionCustomName(sessionId, summary);
+    // Other tabs and devices otherwise keep the old title until a reload.
+    void broadcastSessionUpserted(sessionId).catch((error: unknown) => {
+      console.warn('[sessions] Failed to announce a renamed session', error);
+    });
     return { sessionId, summary };
   },
 };
