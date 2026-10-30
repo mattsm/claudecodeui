@@ -28,6 +28,7 @@ vi.mock('@/modules/plugins', () => ({
 
 vi.mock('@/shared/ui', () => ({
   LLMProviderLogo: () => null,
+  SessionTitle: ({ name }: { name: string }) => name,
 }));
 
 const { default: WorkspaceTitle } = await import('@/modules/project-workspace/WorkspaceTitle');

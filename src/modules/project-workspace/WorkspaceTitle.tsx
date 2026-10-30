@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-import { LLMProviderLogo } from '@/shared/ui';
+import { LLMProviderLogo, SessionTitle } from '@/shared/ui';
 import type { AppTab, Project, ProjectSession } from '@/shared/types';
 import { usePlugins } from '@/modules/plugins';
 import { getSessionTitle } from '@/shared/utils';
@@ -110,7 +110,7 @@ export default function WorkspaceTitle({
                 onDoubleClick={startRenaming}
                 className="cursor-text truncate text-sm font-semibold leading-tight text-foreground"
               >
-                {sessionTitle}
+                <SessionTitle name={sessionTitle} />
               </h2>
             )}
             <div className="truncate text-[11px] leading-tight text-muted-foreground">{selectedProject.displayName}</div>

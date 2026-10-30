@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { Check, CheckSquare, Edit2, Loader2, MoreHorizontal, Square, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
-import { Badge, Dialog, DialogContent, DialogTitle, LLMProviderLogo, Tooltip, buttonVariants } from '@/shared/ui';
+import { Badge, Dialog, DialogContent, DialogTitle, LLMProviderLogo, SessionTitle, Tooltip, buttonVariants } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import type { LLMProvider, Project, ProjectSession, SessionWithProvider } from '@/shared/types';
 import { PROVIDER_LABELS, createSessionViewModel, formatCompactAge } from '@/modules/sidebar/utils/sidebarProjectFormatting';
@@ -205,7 +205,7 @@ function SidebarSessionItem({
                   className="min-w-0 flex-1 truncate text-sm font-normal text-foreground"
                   title={sessionView.sessionName}
                 >
-                  {sessionView.sessionName}
+                  <SessionTitle name={sessionView.sessionName} />
                 </div>
                 {isProcessing ? (
                   <span className="ml-auto flex-shrink-0">
@@ -261,7 +261,7 @@ function SidebarSessionItem({
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-foreground" title={sessionView.sessionName}>
-                  {sessionView.sessionName}
+                  <SessionTitle name={sessionView.sessionName} />
                 </p>
                 <p id="mobile-session-options-description" className="text-xs text-muted-foreground">
                   {providerLabel} session
@@ -429,7 +429,7 @@ function SidebarSessionItem({
                   className="min-w-0 flex-1 truncate text-sm font-normal text-foreground"
                   title={sessionView.sessionName}
                 >
-                  {sessionView.sessionName}
+                  <SessionTitle name={sessionView.sessionName} />
                 </div>
                 {isProcessing ? (
                   <span
