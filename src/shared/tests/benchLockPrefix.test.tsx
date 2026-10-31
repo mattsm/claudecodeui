@@ -12,9 +12,15 @@ describe('bench-lock title markers', () => {
     expect(splitBenchLockPrefix('combined perf')).toEqual({ locks: [], title: 'combined perf' });
   });
 
+  it('reads the bracket and emoji markers the lock script writes now', () => {
+    expect(splitBenchLockPrefix('[A3] 🍎 combined perf')).toEqual({ locks: ['A3', 'MAC'], title: 'combined perf' });
+    expect(splitBenchLockPrefix('🐧 [A1] wifi test')).toEqual({ locks: ['WIFI1', 'A1'], title: 'wifi test' });
+  });
+
   it('leaves markers that are not at the front, and unknown ones, as text', () => {
     expect(splitBenchLockPrefix('notes on 🔒A3 handoff').locks).toEqual([]);
     expect(splitBenchLockPrefix('🔒A2 spare').locks).toEqual([]);
+    expect(splitBenchLockPrefix('[A2] spare').locks).toEqual([]);
   });
 
   it('draws the markers as labelled icons and keeps the rest of the title', () => {
