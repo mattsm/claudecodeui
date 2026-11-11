@@ -84,13 +84,13 @@ test('with only background work and nothing typed, the main button stops that wo
   assert.equal(onSubmit.mock.calls.length, 0);
 });
 
-test('once something is typed over background work, the main button is Send again', () => {
+test('once something is typed over background work, the main button is the send menu again', () => {
   const onStopBackgroundWork = vi.fn();
   const { container } = renderComposer({ activity: backgroundOnly, onStopBackgroundWork, input: 'next step', hasInput: true });
 
   const formStop = screen.queryAllByRole('button', { name: 'Stop' }).filter((element) => container.querySelector('form')?.contains(element));
   assert.equal(formStop.length, 0);
-  assert.equal(sendButton().hasAttribute('disabled'), false);
+  assert.ok(screen.getByRole('button', { name: 'Send options' }));
 });
 
 test('an idle session with nothing typed keeps a disabled Send', () => {
