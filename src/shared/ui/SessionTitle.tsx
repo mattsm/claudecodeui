@@ -5,12 +5,12 @@ import { cn } from '@/shared/utils';
 /**
  * Bench-lock markers at the front of a chat title. `~/bin/board-lock-title.mjs`
  * prefixes the title of the chat holding a bench resource with "[A3] ",
- * "[A1] ", "🍎 " (Mac mini) or "🐧 " (goliath Wi-Fi client), or the older
+ * "[A1] ", "[A2] ", "🍎 " (Mac mini) or "🐧 " (goliath Wi-Fi client), or the older
  * "🔒A3 "-style markers; the sidebar draws them as icons.
  */
-export type BenchLock = 'A1' | 'A3' | 'MAC' | 'WIFI1';
+export type BenchLock = 'A1' | 'A2' | 'A3' | 'MAC' | 'WIFI1';
 
-const MARKER = /^(?:🔒(A1|A3|MAC|WIFI1)|\[(A1|A3)\]|(🍎)|(🐧)) /u;
+const MARKER = /^(?:🔒(A1|A2|A3|MAC|WIFI1)|\[(A1|A2|A3)\]|(🍎)|(🐧)) /u;
 const EMOJI_LOCKS: Record<string, BenchLock> = { '🍎': 'MAC', '🐧': 'WIFI1' };
 
 export function splitBenchLockPrefix(name: string): { locks: BenchLock[]; title: string } {
@@ -25,6 +25,7 @@ export function splitBenchLockPrefix(name: string): { locks: BenchLock[]; title:
 
 const LOCK_LABELS: Record<BenchLock, string> = {
   A1: 'Holds the bench A1',
+  A2: 'Holds the bench A2',
   A3: 'Holds the bench A3',
   MAC: 'Holds the bench Mac mini',
   WIFI1: 'Holds the goliath Wi-Fi client',
