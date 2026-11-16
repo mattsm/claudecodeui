@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next';
 
 import { ActionMenu, Button, LLMProviderLogo, SessionTitle, Tooltip } from '@/shared/ui';
 import { cn } from '@/shared/utils';
+import { LockIcon, splitBenchLockPrefix } from '@/shared/ui/SessionTitle';
 import type { Project, ProjectSession, RecentConversationListItem, SessionRowActions } from '@/shared/types';
 import { formatCompactAge } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import { agentEntryRows, filterAgentEntries, groupAgentConversations } from '@/modules/sidebar/utils/agentGroups';
@@ -346,7 +347,18 @@ function AgentsList({
             running: runningCount,
             total: rows.length,
           });
+          // A collapsed group hides the chats that hold a bench resource, so the header shows their markers.
+          const hiddenLocks = isOpen
+            ? []
+            : entry.members.flatMap((row) => splitBenchLockPrefix(row.conversation.sessionTitle).locks
+              .map((lock) => ({ lock, sessionId: row.conversation.sessionId, title: row.label })));
           const runningBadge = (
+            <>
+            {hiddenLocks.map(({ lock, sessionId, title }) => (
+              <span key={`${sessionId}:${lock}`} title={title} data-testid="agent-group-lock" className="inline-flex flex-shrink-0 items-center">
+                <LockIcon lock={lock} />
+              </span>
+            ))}
             <span
               title={runningLabel}
               aria-label={runningLabel}
@@ -360,6 +372,7 @@ function AgentsList({
             >
               {runningCount}/{rows.length}
             </span>
+            </>
           );
 
           return (

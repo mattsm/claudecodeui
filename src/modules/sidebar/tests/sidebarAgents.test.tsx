@@ -143,6 +143,24 @@ test('the count stays on a collapsed group', () => {
   assert.equal(screen.getAllByTestId('agent-group-running')[0].textContent, '1/3');
 });
 
+test('a collapsed group shows the bench resources its chats hold', () => {
+  renderAgents({ conversations: [...CHATS, chat('[A3] wireless lab: verify Wi-Fi'), chat('🍎 virt-wifi: mac')] });
+
+  // Open, each marker is drawn once, on its own chat.
+  assert.equal(screen.queryAllByTestId('agent-group-lock').length, 0);
+  assert.equal(screen.getAllByRole('img', { name: 'Holds the bench A3' }).length, 1);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse wireless lab' }));
+  const [lab, virt] = screen.getAllByTestId('agent-group');
+  assert.equal(within(lab).getAllByTestId('agent-group-lock').length, 1);
+  assert.equal(within(lab).getAllByRole('img', { name: 'Holds the bench A3' }).length, 1);
+  assert.equal(within(lab).getByTestId('agent-group-lock').getAttribute('title'), '[A3] verify Wi-Fi');
+  assert.equal(within(virt).queryAllByTestId('agent-group-lock').length, 0);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse virt-wifi' }));
+  assert.equal(within(screen.getAllByTestId('agent-group')[1]).getAllByRole('img', { name: 'Holds the bench Mac mini' }).length, 1);
+});
+
 test('the search filters by title and opens a collapsed group', () => {
   const first = renderAgents();
   fireEvent.click(screen.getByRole('button', { name: 'Collapse wireless lab' }));

@@ -52,7 +52,8 @@ function MacMiniIcon() {
   );
 }
 
-function LockIcon({ lock }: { lock: BenchLock }) {
+/** One bench-lock marker as an icon. Exported for lists that show a lock away from its title. */
+export function LockIcon({ lock }: { lock: BenchLock }) {
   const icon = lock === 'MAC'
     ? <MacMiniIcon />
     : lock === 'WIFI1'
