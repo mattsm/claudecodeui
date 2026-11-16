@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { RefObject } from 'react';
 
 import type { ChatMessage } from '@/shared/types';
+import { parsePeerMessage } from '@/modules/chat/utils/peerMessages';
 
-/** A message the user typed: not a tool result, and not a task report the harness delivered as a user turn. */
+/** A message the user typed: not a tool result, a task report the harness delivered as a user turn, or a message from another chat. */
 export function isOwnPromptMessage(message: ChatMessage): boolean {
   if (message.type !== 'user' || typeof message.content !== 'string') {
     return false;
   }
   const content = message.content.trimStart();
-  return content.length > 0 && !content.startsWith('<task-notification>');
+  return content.length > 0 && !content.startsWith('<task-notification>') && !parsePeerMessage(content);
 }
 
 /**

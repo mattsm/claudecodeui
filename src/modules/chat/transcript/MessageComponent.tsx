@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, GitBranchIcon, PencilIcon, XIcon } from 'lucide-react';
 
@@ -19,6 +19,7 @@ import { useOptionalUiPreferences } from '@/shared/context/UiPreferencesContext'
 import { MemoryCitations } from '@/modules/chat/transcript/MemoryCitations';
 import { formatMessageTimestamp } from '@/modules/chat/utils/messageTimestamp';
 import { useDismissSideQuestion } from '@/modules/chat/hooks/useSideQuestions';
+import { parsePeerMessage } from '@/modules/chat/utils/peerMessages';
 
 type MessageComponentProps = {
   message: ChatMessage;
@@ -120,8 +121,44 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
   ) : null;
   const shouldHideThinkingMessage = Boolean(message.isThinking && !showThinking);
 
+  // A message another chat sent is folded to one line until it is opened. An
+  // exported document has nothing to click, so it prints the message whole.
+  const [isPeerMessageOpen, setIsPeerMessageOpen] = useState(false);
+  const peerMessage = useMemo(
+    () => (message.type === 'user' && !message.sideQuestion && !isExporting ? parsePeerMessage(userCopyContent) : null),
+    [isExporting, message.sideQuestion, message.type, userCopyContent],
+  );
+  const peerMessageToggle = peerMessage ? (
+    <button
+      type="button"
+      onClick={() => setIsPeerMessageOpen((open) => !open)}
+      aria-expanded={isPeerMessageOpen}
+      title={t('message.peerMessageToggle', 'Message from another chat')}
+      data-testid="peer-message-toggle"
+      className="flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+    >
+      <span aria-hidden className={`inline-block font-mono transition-transform ${isPeerMessageOpen ? 'rotate-90' : ''}`}>&gt;</span>
+      <span className="min-w-0 truncate">{peerMessage.preview}</span>
+      {!isPeerMessageOpen && <span className="flex-shrink-0">{formattedTime}</span>}
+    </button>
+  ) : null;
+
   if (shouldHideThinkingMessage) {
     return null;
+  }
+
+  if (peerMessageToggle && !isPeerMessageOpen) {
+    return (
+      <div
+        ref={messageRef}
+        data-message-timestamp={message.timestamp || undefined}
+        className="chat-message user peer-message flex justify-end px-3 sm:px-0"
+      >
+        <div className="flex min-w-0 max-w-full sm:max-w-[85%] md:max-w-md lg:max-w-lg xl:max-w-xl">
+          {peerMessageToggle}
+        </div>
+      </div>
+    );
   }
 
   if (message.sideQuestion) {
@@ -188,6 +225,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
         /* User turn on the right: claude.ai-style attachment cards above the bubble */
         <div className="flex w-full items-end space-x-0 sm:w-auto sm:max-w-[85%] sm:space-x-3 md:max-w-md lg:max-w-lg xl:max-w-xl">
           <div className="flex min-w-0 flex-1 flex-col items-end gap-2 sm:flex-initial">
+            {peerMessageToggle}
             {message.images && message.images.length > 0 && (
               <ChatMessageImages
                 images={message.images}
