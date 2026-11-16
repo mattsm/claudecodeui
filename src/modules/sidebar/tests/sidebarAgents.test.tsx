@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, test, vi } from 'vitest';
 
-import type { RecentConversationListItem, SessionRowActions, SidebarProjectListProps } from '@/shared/types';
+import type { Project, RecentConversationListItem, SessionRowActions, SidebarProjectListProps } from '@/shared/types';
 
 vi.mock('@/modules/sidebar/SessionOptions', () => ({ default: () => null }));
 
@@ -38,6 +38,17 @@ const CHATS = [
   chat('virt-wifi: airplay'),
 ];
 
+const project = (projectId: string, displayName: string): Project => ({
+  projectId,
+  path: `/home/${displayName}`,
+  fullPath: `/home/${displayName}`,
+  displayName,
+  sessions: [],
+  sessionMeta: { hasMore: false, total: 0 },
+});
+const GIT = project('project-1', 'git');
+const HOME = project('project-2', 'home');
+
 const makeActions = (overrides: Partial<SessionRowActions> = {}): SessionRowActions => ({
   activeRename: null,
   activeSessions: new Set<string>(),
@@ -66,6 +77,9 @@ const renderAgents = (props: Partial<React.ComponentProps<typeof SidebarAgents>>
     onConversationSelect={noop}
     onLoadMore={noop}
     onRetry={noop}
+    projects={[HOME, GIT]}
+    selectedProject={null}
+    onNewAgent={noop}
     t={t}
     {...props}
   />,
@@ -151,6 +165,49 @@ test('older pages stay reachable from a search with no hit', () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Load older conversations' }));
   assert.equal(loads, 1);
+});
+
+test('New agent starts a chat in the project on screen', () => {
+  const started: string[] = [];
+  renderAgents({ selectedProject: HOME, onNewAgent: (target) => started.push(target.displayName) });
+
+  fireEvent.click(screen.getByTestId('new-agent-button'));
+  assert.deepEqual(started, ['home']);
+});
+
+test('with no project on screen, New agent uses the newest chat\'s project', () => {
+  const started: string[] = [];
+  renderAgents({ onNewAgent: (target) => started.push(target.displayName) });
+
+  const button = screen.getByTestId('new-agent-button');
+  assert.ok(button.textContent?.includes('git'));
+  fireEvent.click(button);
+  assert.deepEqual(started, ['git']);
+});
+
+test('the menu beside New agent picks another project', () => {
+  const started: string[] = [];
+  renderAgents({ onNewAgent: (target) => started.push(target.displayName) });
+
+  fireEvent.click(screen.getByRole('button', { name: 'New agent in another project' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'home' }));
+  assert.deepEqual(started, ['home']);
+});
+
+test('one project needs no menu, and New agent stays on an empty list', () => {
+  const started: string[] = [];
+  renderAgents({ conversations: [], projects: [GIT], onNewAgent: (target) => started.push(target.displayName) });
+
+  assert.equal(screen.queryByRole('button', { name: 'New agent in another project' }) === null, true);
+  assert.equal(screen.getByTestId('new-agent-button').textContent, 'New agent');
+  fireEvent.click(screen.getByTestId('new-agent-button'));
+  assert.deepEqual(started, ['git']);
+});
+
+test('without a project there is no New agent button', () => {
+  renderAgents({ projects: [] });
+
+  assert.equal(screen.queryByTestId('new-agent-button') === null, true);
 });
 
 test('a click opens the chat', () => {

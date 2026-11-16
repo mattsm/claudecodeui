@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { Bot, Loader2 } from 'lucide-react';
+import { Bot, ChevronDown, Folder, Loader2, Plus } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
-import { Button, LLMProviderLogo, SessionTitle, Tooltip } from '@/shared/ui';
+import { ActionMenu, Button, LLMProviderLogo, SessionTitle, Tooltip } from '@/shared/ui';
 import { cn } from '@/shared/utils';
-import type { ProjectSession, RecentConversationListItem, SessionRowActions } from '@/shared/types';
+import type { Project, ProjectSession, RecentConversationListItem, SessionRowActions } from '@/shared/types';
 import { formatCompactAge } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import { agentEntryRows, filterAgentEntries, groupAgentConversations } from '@/modules/sidebar/utils/agentGroups';
 import type { AgentRow } from '@/modules/sidebar/utils/agentGroups';
@@ -49,6 +49,10 @@ type SidebarAgentsProps = {
   ) => void;
   onLoadMore: () => void;
   onRetry: () => void;
+  projects: Project[];
+  selectedProject: Project | null;
+  /** Opens an empty chat in the project, the way the Projects tab's "New Session" does. */
+  onNewAgent: (project: Project) => void;
   t: TFunction;
 };
 
@@ -149,12 +153,84 @@ function AgentChatRow({ row, badge, selectedSession, currentTime, sessionActions
   );
 }
 
+const projectLabel = (project: Project) => project.displayName || project.projectId;
+
 /**
- * Rendered by SidebarContent in the agents mode: the recent chats, with the
- * chats of one effort ("wireless lab: map UI") folded under their master chat
- * ("wireless lab master") or under the shared prefix.
+ * The "New agent" button. A chat needs a project: the one on screen, else the
+ * one the newest chat is in. With several projects a menu picks another.
  */
-export default function SidebarAgents({
+function NewAgentButton({ projects, selectedProject, conversations, onNewAgent, t }: Pick<SidebarAgentsProps, 'projects' | 'selectedProject' | 'conversations' | 'onNewAgent' | 't'>) {
+  const project = projects.find((candidate) => candidate.projectId === selectedProject?.projectId)
+    ?? projects.find((candidate) => candidate.projectId === conversations[0]?.projectId)
+    ?? projects[0];
+  if (!project) {
+    return null;
+  }
+
+  const label = t('agents.newAgent', 'New agent');
+  const pickProjectLabel = t('agents.newAgentIn', 'New agent in another project');
+
+  return (
+    <div className="mb-1.5 flex items-center gap-1 px-1">
+      <Button
+        variant="default"
+        size="sm"
+        className="flex h-8 min-w-0 flex-1 justify-start gap-2 bg-primary text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        onClick={() => onNewAgent(project)}
+        title={`${label}: ${project.fullPath || projectLabel(project)}`}
+        data-testid="new-agent-button"
+      >
+        <Plus className="h-3 w-3 flex-shrink-0" />
+        <span className="flex-shrink-0">{label}</span>
+        {projects.length > 1 && (
+          <span className="min-w-0 flex-1 truncate text-right font-normal opacity-70">{projectLabel(project)}</span>
+        )}
+      </Button>
+      {projects.length > 1 && (
+        <ActionMenu
+          label={pickProjectLabel}
+          ariaLabel={pickProjectLabel}
+          icon={ChevronDown}
+          iconOnly
+          portal
+          variant="ghost"
+          size="sm"
+          className="flex-none"
+          triggerClassName="h-8 px-2 text-muted-foreground hover:text-foreground"
+          items={projects.map((candidate) => ({
+            key: candidate.projectId,
+            label: projectLabel(candidate),
+            icon: Folder,
+            onSelect: () => onNewAgent(candidate),
+          }))}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Rendered by SidebarContent in the agents mode: the "New agent" button and
+ * the recent chats, with the chats of one effort ("wireless lab: map UI")
+ * folded under their master chat ("wireless lab master") or under the shared
+ * prefix.
+ */
+export default function SidebarAgents(props: SidebarAgentsProps) {
+  return (
+    <>
+      <NewAgentButton
+        projects={props.projects}
+        selectedProject={props.selectedProject}
+        conversations={props.conversations}
+        onNewAgent={props.onNewAgent}
+        t={props.t}
+      />
+      <AgentsList {...props} />
+    </>
+  );
+}
+
+function AgentsList({
   conversations,
   hasMore,
   isLoading,

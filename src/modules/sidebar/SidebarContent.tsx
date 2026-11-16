@@ -404,6 +404,9 @@ export default function SidebarContent({
             onConversationSelect={onConversationResultClick}
             onLoadMore={onLoadMoreRecentConversations}
             onRetry={onRetryRecentConversations}
+            projects={projectListProps.projects}
+            selectedProject={projectListProps.selectedProject}
+            onNewAgent={projectListProps.onNewSession}
             t={t}
           />
         ) : showConversationSearch ? (
