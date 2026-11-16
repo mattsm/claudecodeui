@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import type { RecentConversationListItem } from '@/shared/types';
-import { agentEntryRows, filterAgentEntries, groupAgentConversations } from '@/modules/sidebar/utils/agentGroups';
+import { agentEntryRows, filterAgentEntries, groupAgentConversations, pinAgentConversations } from '@/modules/sidebar/utils/agentGroups';
 import type { AgentEntry } from '@/modules/sidebar/utils/agentGroups';
 
 const chat = (sessionTitle: string): RecentConversationListItem => ({
@@ -135,4 +135,53 @@ test('a group counts its master with its chats', () => {
     agentEntryRows(group).map((row) => row.conversation.sessionTitle),
     ['wireless lab master', 'wireless lab: map UI'],
   );
+});
+
+const FEED = [
+  chat('atf'),
+  chat('wireless lab: release'),
+  chat('decagon'),
+  chat('wireless lab master'),
+  chat('wireless lab: map UI'),
+  chat('virt-wifi: azure'),
+  chat('virt-wifi: airplay'),
+];
+const describePinned = (pinnedTitles: string[]) => {
+  const { pinned, entries } = pinAgentConversations(FEED, pinnedTitles.map((title) => `id:${title}`));
+  return { pinned: describeEntries(pinned), entries: describeEntries(entries) };
+};
+
+test('a pinned chat moves to the top, in the order the chats were pinned', () => {
+  assert.deepEqual(describePinned(['decagon', 'atf']), {
+    pinned: ['decagon', 'atf'],
+    entries: [
+      'wireless lab [wireless lab master] > release | map UI',
+      'virt-wifi [-] > azure | airplay',
+    ],
+  });
+});
+
+test('pinning a master chat moves its whole group to the top', () => {
+  assert.deepEqual(describePinned(['wireless lab master']), {
+    pinned: ['wireless lab [wireless lab master] > release | map UI'],
+    entries: ['atf', 'decagon', 'virt-wifi [-] > azure | airplay'],
+  });
+});
+
+test('pinning a chat inside a group lifts only that chat out, under its full title', () => {
+  assert.deepEqual(describePinned(['wireless lab: map UI']), {
+    pinned: ['wireless lab: map UI'],
+    entries: ['atf', 'wireless lab [wireless lab master] > release', 'decagon', 'virt-wifi [-] > azure | airplay'],
+  });
+  // A group of two without a master does not survive losing one.
+  assert.deepEqual(describePinned(['virt-wifi: azure']), {
+    pinned: ['virt-wifi: azure'],
+    entries: ['atf', 'wireless lab [wireless lab master] > release | map UI', 'decagon', 'virt-wifi: airplay'],
+  });
+});
+
+test('a pin for a chat the feed does not hold is skipped, and no pins means no change', () => {
+  assert.deepEqual(describePinned(['gone', 'atf']).pinned, ['atf']);
+  assert.deepEqual(describePinned([]).pinned, []);
+  assert.deepEqual(describePinned([]).entries, describeEntries(groupAgentConversations(FEED)));
 });

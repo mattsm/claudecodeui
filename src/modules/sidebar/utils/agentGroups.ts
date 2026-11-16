@@ -111,6 +111,59 @@ export function groupAgentConversations(conversations: RecentConversationListIte
 }
 
 /**
+ * Splits the feed into the pinned entries, in pin order, and the rest.
+ *
+ * Pinning a group's master chat, or a chat on its own, moves that whole entry
+ * to the top. Pinning a chat inside a group lifts just that chat out of it.
+ */
+export function pinAgentConversations(
+  conversations: RecentConversationListItem[],
+  pinnedIds: string[],
+): { pinned: AgentEntry[]; entries: AgentEntry[] } {
+  if (pinnedIds.length === 0) {
+    return { pinned: [], entries: groupAgentConversations(conversations) };
+  }
+
+  const pinnedSet = new Set(pinnedIds);
+  const headsEntry = (entry: AgentEntry, sessionId: string) => (
+    entry.kind === 'chat' ? entry.row.conversation.sessionId === sessionId : entry.master?.conversation.sessionId === sessionId
+  );
+  const lifted = new Set<string>();
+  for (const entry of groupAgentConversations(conversations)) {
+    if (entry.kind === 'group') {
+      for (const row of entry.members) {
+        if (pinnedSet.has(row.conversation.sessionId)) {
+          lifted.add(row.conversation.sessionId);
+        }
+      }
+    }
+  }
+
+  // Grouped again without the lifted chats, so a group they leave is judged on what is left of it.
+  const grouped = groupAgentConversations(conversations.filter((conversation) => !lifted.has(conversation.sessionId)));
+  const byId = new Map(conversations.map((conversation) => [conversation.sessionId, conversation]));
+  const pinned: AgentEntry[] = [];
+  const moved = new Set<AgentEntry>();
+  for (const sessionId of pinnedIds) {
+    const conversation = byId.get(sessionId);
+    if (!conversation) {
+      continue;
+    }
+    if (lifted.has(sessionId)) {
+      pinned.push({ kind: 'chat', key: sessionId, row: { conversation, label: conversation.sessionTitle } });
+      continue;
+    }
+    const entry = grouped.find((candidate) => headsEntry(candidate, sessionId));
+    if (entry && !moved.has(entry)) {
+      moved.add(entry);
+      pinned.push(entry);
+    }
+  }
+
+  return { pinned, entries: grouped.filter((entry) => !moved.has(entry)) };
+}
+
+/**
  * Narrows the entries to the chats whose title holds every word of the query.
  * A group keeps its master as the header while any of its chats match.
  */

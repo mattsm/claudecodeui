@@ -28,6 +28,8 @@ export type UserPreferences = {
   codeEditorSettings: unknown;
   uiPreferences: unknown;
   selectedProvider: string;
+  /** Session ids pinned to the top of the sidebar's Agents tab, in pin order. */
+  agentsPinnedSessions: string[];
 };
 
 export type UserPreferenceKey = keyof UserPreferences;
@@ -67,6 +69,8 @@ const LEGACY_STORAGE_KEYS: Record<UserPreferenceKey, string> = {
   codeEditorSettings: '',
   uiPreferences: 'uiPreferences',
   selectedProvider: 'selected-provider',
+  // Never lived in localStorage.
+  agentsPinnedSessions: '',
 };
 
 const PREFERENCE_KEYS = Object.keys(LEGACY_STORAGE_KEYS) as UserPreferenceKey[];
@@ -205,7 +209,7 @@ export function subscribeToUserPreferences(listener: () => void): () => void {
 function readLegacyPreference(key: UserPreferenceKey): unknown {
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(LEGACY_STORAGE_KEYS[key]);
+    raw = LEGACY_STORAGE_KEYS[key] ? localStorage.getItem(LEGACY_STORAGE_KEYS[key]) : null;
   } catch {
     return undefined;
   }

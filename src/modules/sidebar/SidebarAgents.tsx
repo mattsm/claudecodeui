@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { Bot, ChevronDown, Folder, Loader2, Plus } from 'lucide-react';
+import { Bot, ChevronDown, Folder, Loader2, Pin, Plus } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { ActionMenu, Button, LLMProviderLogo, SessionTitle, Tooltip } from '@/shared/ui';
@@ -8,7 +8,8 @@ import { cn } from '@/shared/utils';
 import { LockIcon, splitBenchLockPrefix } from '@/shared/ui/SessionTitle';
 import type { Project, ProjectSession, RecentConversationListItem, SessionRowActions } from '@/shared/types';
 import { formatCompactAge } from '@/modules/sidebar/utils/sidebarProjectFormatting';
-import { agentEntryRows, filterAgentEntries, groupAgentConversations } from '@/modules/sidebar/utils/agentGroups';
+import { agentEntryRows, filterAgentEntries, pinAgentConversations } from '@/modules/sidebar/utils/agentGroups';
+import { usePinnedAgents } from '@/modules/sidebar/hooks/usePinnedAgents';
 import type { AgentRow } from '@/modules/sidebar/utils/agentGroups';
 import SessionOptions from '@/modules/sidebar/SessionOptions';
 
@@ -61,10 +62,13 @@ type AgentChatRowProps = Pick<SidebarAgentsProps, 'selectedSession' | 'currentTi
   row: AgentRow;
   /** Drawn after the title in place of the age; the group header puts its running count here. */
   badge?: ReactNode;
+  pinnedIds: ReadonlySet<string>;
+  onTogglePin: (sessionId: string) => void;
 };
 
-function AgentChatRow({ row, badge, selectedSession, currentTime, sessionActions, onConversationSelect, t }: AgentChatRowProps) {
+function AgentChatRow({ row, badge, pinnedIds, onTogglePin, selectedSession, currentTime, sessionActions, onConversationSelect, t }: AgentChatRowProps) {
   const { conversation, label } = row;
+  const isPinned = pinnedIds.has(conversation.sessionId);
   const isSelected = String(selectedSession?.id ?? '') === conversation.sessionId;
   const age = formatCompactAge(conversation.lastActivity, currentTime);
   const hasBackgroundWork = sessionActions.backgroundSessionIds.has(conversation.sessionId);
@@ -97,6 +101,14 @@ function AgentChatRow({ row, badge, selectedSession, currentTime, sessionActions
         <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-5">
           <SessionTitle name={label} />
         </span>
+        {isPinned && (
+          <Pin
+            role="img"
+            aria-label={t('agents.pinned', 'Pinned')}
+            data-testid="agent-pinned"
+            className="h-3 w-3 flex-shrink-0 text-muted-foreground"
+          />
+        )}
         {badge}
         {needsAttention ? (
           <Tooltip content={t('tooltips.attentionRequiredIndicator', { defaultValue: 'Session needs attention' })} position="top">
@@ -140,6 +152,8 @@ function AgentChatRow({ row, badge, selectedSession, currentTime, sessionActions
         onSaveEditingSession={sessionActions.onSaveEditingSession}
         onArchiveSession={sessionActions.onArchiveSession}
         onDeleteSession={sessionActions.onDeleteSession}
+        onTogglePin={() => onTogglePin(conversation.sessionId)}
+        isPinned={isPinned}
         onFork={sessionActions.onForkSession
           ? () => sessionActions.onForkSession?.({
             id: conversation.sessionId,
@@ -249,10 +263,34 @@ function AgentsList({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
   const isFiltering = searchFilter.trim().length > 0;
 
-  const entries = useMemo(
-    () => filterAgentEntries(groupAgentConversations(conversations), searchFilter),
-    [conversations, searchFilter],
-  );
+  const { pinnedIds, togglePin, unpin } = usePinnedAgents();
+  const pinnedIdSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
+
+  const { pinned, entries } = useMemo(() => {
+    const split = pinAgentConversations(conversations, pinnedIds);
+    return {
+      pinned: filterAgentEntries(split.pinned, searchFilter),
+      entries: filterAgentEntries(split.entries, searchFilter),
+    };
+  }, [conversations, pinnedIds, searchFilter]);
+
+  // A pinned chat can be older than the page the tab loads. Older pages are
+  // fetched until every pin is found; a pin still missing from the whole feed
+  // belongs to a chat that was archived or deleted, and is dropped.
+  const missingPinnedIds = useMemo(() => {
+    const loaded = new Set(conversations.map((conversation) => conversation.sessionId));
+    return pinnedIds.filter((sessionId) => !loaded.has(sessionId));
+  }, [conversations, pinnedIds]);
+  useEffect(() => {
+    if (missingPinnedIds.length === 0 || isLoading || isLoadingMore || hasError || conversations.length === 0) {
+      return;
+    }
+    if (hasMore) {
+      onLoadMore();
+    } else {
+      unpin(missingPinnedIds);
+    }
+  }, [conversations.length, hasError, hasMore, isLoading, isLoadingMore, missingPinnedIds, onLoadMore, unpin]);
 
   const toggleGroup = useCallback((key: string) => {
     setCollapsedGroups((previous) => {
@@ -305,7 +343,7 @@ function AgentsList({
     </Button>
   ) : null;
 
-  if (entries.length === 0) {
+  if (pinned.length + entries.length === 0) {
     return (
       <div className="px-4 py-10 text-center">
         <Bot className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
@@ -319,15 +357,19 @@ function AgentsList({
     );
   }
 
-  const rowProps = { selectedSession, currentTime, sessionActions, onConversationSelect, t };
+  const rowProps = { selectedSession, currentTime, sessionActions, onConversationSelect, t, pinnedIds: pinnedIdSet, onTogglePin: togglePin };
+  // A rule under the pinned entries sets them apart from the rest.
+  const dividerClass = (index: number) => (
+    pinned.length > 0 && index === pinned.length ? 'mt-1.5 border-t border-border/60 pt-1.5' : undefined
+  );
 
   return (
     <div className="px-1" data-testid="agents-list">
       <div className="space-y-0.5">
-        {entries.map((entry) => {
+        {[...pinned, ...entries].map((entry, index) => {
           if (entry.kind === 'chat') {
             return (
-              <div key={entry.key} className="flex min-w-0 items-center">
+              <div key={entry.key} className={cn('flex min-w-0 items-center', dividerClass(index))}>
                 {/* Lines the row up with the group headers, which lead with a toggle. */}
                 <span className="w-5 flex-shrink-0" />
                 <AgentChatRow row={entry.row} {...rowProps} />
@@ -376,7 +418,7 @@ function AgentsList({
           );
 
           return (
-            <section key={`group:${entry.key}`} data-testid="agent-group">
+            <section key={`group:${entry.key}`} data-testid="agent-group" className={dividerClass(index)}>
               <div className="flex min-w-0 items-center">
                 <button
                   type="button"

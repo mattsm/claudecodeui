@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Archive, Check, Edit2, GitBranch, MoreHorizontal, Trash2, X } from 'lucide-react';
+import { Archive, Check, Edit2, GitBranch, MoreHorizontal, Pin, PinOff, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { ActionMenu } from '@/shared/ui';
@@ -32,6 +32,9 @@ type SessionOptionsProps = {
   onFork?: () => void;
   /** Withheld where the row has nowhere to send an archive or delete. */
   canDelete?: boolean;
+  /** Set by lists that can pin a session to their top; the menu then offers it. */
+  onTogglePin?: () => void;
+  isPinned?: boolean;
   className?: string;
   t: TFunction;
 };
@@ -62,6 +65,8 @@ export default function SessionOptions({
   onDeleteSession,
   onFork,
   canDelete = true,
+  onTogglePin,
+  isPinned = false,
   className,
   t,
 }: SessionOptionsProps) {
@@ -184,6 +189,12 @@ export default function SessionOptions({
               description: 'Continue from a copy, leaving this one untouched.',
               icon: GitBranch,
               onSelect: onFork,
+            }] : []),
+            ...(onTogglePin ? [{
+              key: 'pin',
+              label: isPinned ? 'Unpin from the top' : 'Pin to the top',
+              icon: isPinned ? PinOff : Pin,
+              onSelect: onTogglePin,
             }] : []),
             ...(canDelete && !isProcessing ? [{
               key: 'archive',

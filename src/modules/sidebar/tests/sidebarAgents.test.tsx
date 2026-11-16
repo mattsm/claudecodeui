@@ -1,12 +1,31 @@
 import assert from 'node:assert/strict';
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, test, vi } from 'vitest';
 
 import type { Project, RecentConversationListItem, SessionRowActions, SidebarProjectListProps } from '@/shared/types';
 
-vi.mock('@/modules/sidebar/SessionOptions', () => ({ default: () => null }));
+// The menu's pin item as a plain button, so a test can pin without opening a menu.
+vi.mock('@/modules/sidebar/SessionOptions', () => ({
+  default: ({ sessionId, onTogglePin, isPinned }: { sessionId: string; onTogglePin?: () => void; isPinned?: boolean }) => (
+    <button type="button" onClick={onTogglePin}>{`${isPinned ? 'unpin' : 'pin'} ${sessionId}`}</button>
+  ),
+}));
+
+// The preference store without its server write.
+const preferenceStore = vi.hoisted(() => ({ values: {} as Record<string, unknown>, listeners: new Set<() => void>() }));
+vi.mock('@/shared/userSettings', () => ({
+  readUserPreference: (key: string, fallback: unknown) => preferenceStore.values[key] ?? fallback,
+  writeUserPreference: (key: string, value: unknown) => {
+    preferenceStore.values[key] = value;
+    preferenceStore.listeners.forEach((listener) => listener());
+  },
+  subscribeToUserPreferences: (listener: () => void) => {
+    preferenceStore.listeners.add(listener);
+    return () => { preferenceStore.listeners.delete(listener); };
+  },
+}));
 
 const { default: SidebarAgents } = await import('@/modules/sidebar/SidebarAgents');
 
@@ -63,7 +82,7 @@ const makeActions = (overrides: Partial<SessionRowActions> = {}): SessionRowActi
   ...overrides,
 });
 
-const renderAgents = (props: Partial<React.ComponentProps<typeof SidebarAgents>> = {}) => render(
+const agentsElement = (props: Partial<React.ComponentProps<typeof SidebarAgents>> = {}) => (
   <SidebarAgents
     conversations={CHATS}
     hasMore={false}
@@ -82,14 +101,17 @@ const renderAgents = (props: Partial<React.ComponentProps<typeof SidebarAgents>>
     onNewAgent={noop}
     t={t}
     {...props}
-  />,
+  />
 );
+
+const renderAgents = (props: Partial<React.ComponentProps<typeof SidebarAgents>> = {}) => render(agentsElement(props));
 
 const rowTitles = (container: HTMLElement) =>
   within(container).queryAllByTestId('agent-chat-row').map((row) => row.getAttribute('title'));
 
 beforeEach(() => {
   localStorage.clear();
+  preferenceStore.values = {};
 });
 
 test('chats are listed under their master chat or their shared prefix', () => {
@@ -226,6 +248,72 @@ test('without a project there is no New agent button', () => {
   renderAgents({ projects: [] });
 
   assert.equal(screen.queryByTestId('new-agent-button') === null, true);
+});
+
+test('the menu pins a chat to the top and unpins it again', () => {
+  renderAgents();
+  assert.equal(screen.queryAllByTestId('agent-pinned').length, 0);
+
+  fireEvent.click(screen.getByRole('button', { name: 'pin id:decagon' }));
+  assert.deepEqual(rowTitles(document.body).slice(0, 2), ['decagon', 'wireless lab master']);
+  assert.equal(screen.getAllByTestId('agent-pinned').length, 1);
+  assert.deepEqual(preferenceStore.values.agentsPinnedSessions, ['id:decagon']);
+
+  fireEvent.click(screen.getByRole('button', { name: 'unpin id:decagon' }));
+  assert.deepEqual(rowTitles(document.body).slice(0, 2), ['wireless lab master', 'wireless lab: map UI']);
+  assert.deepEqual(preferenceStore.values.agentsPinnedSessions, []);
+});
+
+test('a pinned chat inside a group is listed on its own at the top', () => {
+  preferenceStore.values.agentsPinnedSessions = ['id:wireless lab: release', 'id:virt-wifi: airplay'];
+  renderAgents();
+
+  assert.deepEqual(rowTitles(document.body), [
+    'wireless lab: release', 'virt-wifi: airplay',
+    'wireless lab master', 'wireless lab: map UI', 'decagon', 'virt-wifi: azure',
+  ]);
+  // Lifted out, the chat shows its full title.
+  assert.ok(screen.getByText('wireless lab: release'));
+  assert.equal(screen.getAllByTestId('agent-group').length, 1);
+});
+
+test('a pin made on another device shows up when the preferences arrive', () => {
+  renderAgents();
+
+  act(() => {
+    preferenceStore.values.agentsPinnedSessions = ['id:decagon'];
+    preferenceStore.listeners.forEach((listener) => listener());
+  });
+  assert.equal(rowTitles(document.body)[0], 'decagon');
+});
+
+test('older pages are loaded while a pinned chat is not in the feed yet', () => {
+  preferenceStore.values.agentsPinnedSessions = ['id:old chat'];
+  let loads = 0;
+  const { rerender } = renderAgents({ hasMore: true, onLoadMore: () => { loads += 1; } });
+  assert.equal(loads, 1);
+  assert.deepEqual(preferenceStore.values.agentsPinnedSessions, ['id:old chat']);
+
+  // The next page holds it: it is pinned, and nothing more is loaded.
+  rerender(agentsElement({ conversations: [...CHATS, chat('old chat')], hasMore: true, onLoadMore: () => { loads += 1; } }));
+  assert.equal(loads, 1);
+  assert.equal(rowTitles(document.body)[0], 'old chat');
+});
+
+test('a pin for a chat that is in no page of the feed is dropped', () => {
+  preferenceStore.values.agentsPinnedSessions = ['id:archived chat', 'id:decagon'];
+  renderAgents({ hasMore: false });
+
+  assert.deepEqual(preferenceStore.values.agentsPinnedSessions, ['id:decagon']);
+});
+
+test('a pin is kept while the feed is still loading or failed to load', () => {
+  preferenceStore.values.agentsPinnedSessions = ['id:old chat'];
+  renderAgents({ hasMore: false, isLoading: true });
+  renderAgents({ hasMore: false, hasError: true });
+  renderAgents({ hasMore: false, conversations: [] });
+
+  assert.deepEqual(preferenceStore.values.agentsPinnedSessions, ['id:old chat']);
 });
 
 test('a click opens the chat', () => {
