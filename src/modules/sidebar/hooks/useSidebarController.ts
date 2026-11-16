@@ -161,7 +161,7 @@ export function useSidebarController({
   // same rows (still on screen until the first settles) from sending them again.
   const sessionIdsBeingDeletedRef = useRef<Set<string>>(new Set());
   const [showVersionModal, setShowVersionModal] = useState(false);
-  const [searchMode, setSearchMode] = useState<SidebarSearchMode>('projects');
+  const [searchMode, setSearchMode] = useState<SidebarSearchMode>('agents');
   const [conversationResults, setConversationResults] = useState<ConversationSearchResults | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
@@ -184,6 +184,7 @@ export function useSidebarController({
   const projectIdsLoadingMoreSessionsRef = useRef<Set<string>>(new Set());
   const searchSeqRef = useRef(0);
   const recentConversationsSeqRef = useRef(0);
+  const recentConversationsLoadedRef = useRef(false);
   const archivedSessionsSeqRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
   const starToggleSequenceByProjectRef = useRef<Map<string, number>>(new Map());
@@ -299,6 +300,9 @@ export function useSidebarController({
     }
   }, []);
 
+  // The Agents tab groups the feed, so it loads the largest page the server allows.
+  const recentConversationsPageSize = searchMode === 'agents' ? 100 : 40;
+
   const fetchRecentConversationsPage = useCallback(async (offset: number, append: boolean) => {
     const requestSequence = ++recentConversationsSeqRef.current;
     if (append) {
@@ -309,7 +313,7 @@ export function useSidebarController({
     setRecentConversationsError(false);
 
     try {
-      const response = await api.recentConversations({ limit: 40, offset });
+      const response = await api.recentConversations({ limit: recentConversationsPageSize, offset });
       if (!response.ok) {
         throw new Error(`Failed to load recent conversations: ${response.status}`);
       }
@@ -336,6 +340,7 @@ export function useSidebarController({
       });
       setRecentConversationsTotal(Number(payload.data?.total ?? conversations.length));
       setRecentConversationsHasMore(Boolean(payload.data?.hasMore));
+      recentConversationsLoadedRef.current = true;
     } catch (error) {
       if (requestSequence !== recentConversationsSeqRef.current) {
         return;
@@ -348,19 +353,21 @@ export function useSidebarController({
         setIsLoadingMoreRecentConversations(false);
       }
     }
-  }, []);
+  }, [recentConversationsPageSize]);
 
   const reloadRecentConversations = useCallback(() => {
     void fetchRecentConversationsPage(0, false);
   }, [fetchRecentConversationsPage]);
 
   const loadMoreRecentConversations = useCallback(() => {
-    if (isLoadingMoreRecentConversations || !recentConversationsHasMore) {
+    // A page requested during a reload would cancel the reload.
+    if (isRecentConversationsLoading || isLoadingMoreRecentConversations || !recentConversationsHasMore) {
       return;
     }
     void fetchRecentConversationsPage(recentConversations.length, true);
   }, [
     fetchRecentConversationsPage,
+    isRecentConversationsLoading,
     isLoadingMoreRecentConversations,
     recentConversations.length,
     recentConversationsHasMore,
@@ -396,13 +403,38 @@ export function useSidebarController({
     void fetchArchivedSessions();
   }, [fetchArchivedSessions]);
 
+  // The Agents tab filters the loaded feed in place; the Conversations tab
+  // swaps the feed for the transcript search once a query is typed.
+  const showsRecentConversations = searchMode === 'agents'
+    || (searchMode === 'conversations' && debouncedSearchQuery.length < 2);
+
   useEffect(() => {
-    if (searchMode !== 'conversations' || debouncedSearchQuery.length >= 2) {
+    if (showsRecentConversations) {
+      reloadRecentConversations();
+    }
+  }, [reloadRecentConversations, showsRecentConversations]);
+
+  // The feed is fetched when the tab opens, so a chat started since then is
+  // not in it. A running chat the list does not hold reloads it, once per chat:
+  // some running sessions never appear in the feed.
+  const feedReloadedForSessionIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (searchMode !== 'agents' || isRecentConversationsLoading || !recentConversationsLoadedRef.current) {
       return;
     }
 
-    reloadRecentConversations();
-  }, [debouncedSearchQuery, reloadRecentConversations, searchMode]);
+    const loadedIds = new Set(recentConversations.map((conversation) => conversation.sessionId));
+    let hasUnlistedChat = false;
+    for (const sessionId of activeSessions) {
+      if (!loadedIds.has(sessionId) && !feedReloadedForSessionIdsRef.current.has(sessionId)) {
+        feedReloadedForSessionIdsRef.current.add(sessionId);
+        hasUnlistedChat = true;
+      }
+    }
+    if (hasUnlistedChat) {
+      reloadRecentConversations();
+    }
+  }, [activeSessions, isRecentConversationsLoading, recentConversations, reloadRecentConversations, searchMode]);
 
   // The Conversations list is only fetched when its tab opens, while `projects`
   // is patched the moment a session is renamed from the workspace header. Fold
@@ -444,7 +476,7 @@ export function useSidebarController({
   useEffect(() => {
     const handleArchiveChanged = () => {
       void fetchArchivedSessions();
-      if (searchMode === 'conversations') {
+      if (searchMode === 'conversations' || searchMode === 'agents') {
         reloadRecentConversations();
       }
     };
@@ -1254,7 +1286,7 @@ export function useSidebarController({
       await Promise.all([
         Promise.resolve(onRefresh()),
         fetchArchivedSessions(),
-        searchMode === 'conversations'
+        searchMode === 'conversations' || searchMode === 'agents'
           ? fetchRecentConversationsPage(0, false)
           : Promise.resolve(),
       ]);

@@ -8,13 +8,14 @@ import type { SidebarSearchMode } from '@/shared/types';
 import SidebarModeTabs from '@/modules/sidebar/SidebarModeTabs';
 
 /**
- * The strip has to survive a sidebar dragged down to its 220px minimum. jsdom
+ * The strip has to survive a sidebar dragged down to its minimum width. jsdom
  * does no layout, so widths are stubbed: the row reports the width under test
  * and every other element a width derived from its label, which is enough for
  * the component to split the tabs the way a browser would.
  */
 
 const LABELS: Record<string, string> = {
+  'search.modeAgents': 'Agents',
   'search.modeProjects': 'Projects',
   'search.modeConversations': 'Conversations',
   'search.runningTooltip': 'Running sessions',
@@ -48,21 +49,35 @@ const renderTabs = (rowWidth: number, searchMode: SidebarSearchMode) => {
   return changes;
 };
 
-test('a wide row shows every tab and no overflow menu', () => {
-  renderTabs(400, 'projects');
+test('Agents is the first tab and the only one with a text label', () => {
+  renderTabs(400, 'agents');
 
+  const tabs = screen.getAllByRole('button').filter((button) => button.hasAttribute('aria-pressed'));
+  // The strip is rendered twice: once on screen and once in the measuring copy.
+  assert.deepEqual(
+    tabs.slice(0, 5).map((button) => button.textContent),
+    ['Agents', '', '', '', ''],
+  );
+  assert.equal(tabs[0].getAttribute('aria-pressed'), 'true');
+});
+
+test('a wide row shows every tab and no overflow menu', () => {
+  renderTabs(400, 'agents');
+
+  assert.ok(screen.getByRole('button', { name: 'Agents' }));
   assert.ok(screen.getByRole('button', { name: 'Projects' }));
   assert.ok(screen.getByRole('button', { name: 'Conversations' }));
   assert.ok(screen.getByRole('button', { name: 'Running sessions' }));
   assert.ok(screen.getByRole('button', { name: 'Archive only' }));
-  assert.equal(screen.queryByRole('button', { name: 'More' }), null);
+  assert.equal(screen.queryByRole('button', { name: 'More' }) === null, true);
 });
 
 test('a narrow row moves the tabs that no longer fit into the dropdown', () => {
-  const changes = renderTabs(220, 'projects');
+  const changes = renderTabs(150, 'agents');
 
+  assert.ok(screen.getByRole('button', { name: 'Agents' }));
   assert.ok(screen.getByRole('button', { name: 'Projects' }));
-  assert.equal(screen.queryByRole('button', { name: 'Conversations' }), null);
+  assert.equal(screen.queryByRole('button', { name: 'Conversations' }) === null, true);
 
   fireEvent.click(screen.getByRole('button', { name: 'More' }));
   assert.ok(screen.getByRole('menuitem', { name: 'Running sessions' }));
@@ -73,12 +88,13 @@ test('a narrow row moves the tabs that no longer fit into the dropdown', () => {
 });
 
 test('the section on screen keeps its place in the row', () => {
-  renderTabs(220, 'archived');
+  renderTabs(150, 'archived');
 
   // Archive is the last tab and the first to be dropped on width alone, but it
   // is the open section, so the strip has to keep showing it as pressed.
   const archive = screen.getByRole('button', { name: 'Archive only' });
   assert.equal(archive.getAttribute('aria-pressed'), 'true');
-  assert.equal(screen.queryByRole('button', { name: 'Conversations' }), null);
+  assert.ok(screen.getByRole('button', { name: 'Agents' }));
+  assert.equal(screen.queryByRole('button', { name: 'Conversations' }) === null, true);
   assert.ok(screen.getByRole('button', { name: 'More' }));
 });

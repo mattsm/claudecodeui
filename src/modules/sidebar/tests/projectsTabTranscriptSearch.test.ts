@@ -74,11 +74,12 @@ afterEach(() => {
 
 test('a query in the Projects tab also searches transcripts', async () => {
   const { result } = renderController();
-  assert.equal(result.current.searchMode, 'projects');
 
   act(() => {
+    result.current.setSearchMode('projects');
     result.current.setSearchFilter('odm');
   });
+  assert.equal(result.current.searchMode, 'projects');
 
   await waitFor(() => {
     assert.deepEqual(openedUrls, ['/api/providers/search/sessions?q=odm']);

@@ -93,6 +93,7 @@ beforeEach(() => {
 
 test('a title renamed in `projects` lands on the matching conversation row', async () => {
   const { result, rerender } = await openConversationsTab([buildProject({ 'session-1': 'Original title', 'session-2': '' })]);
+  const fetchesBefore = recentConversationsResponse.mock.calls.length;
 
   rerender({ projects: [buildProject({ 'session-1': 'Renamed from header', 'session-2': '' })] });
 
@@ -101,7 +102,7 @@ test('a title renamed in `projects` lands on the matching conversation row', asy
     ['Renamed from header', 'session-2'],
   );
   // No refetch was needed for the row to catch up.
-  assert.equal(recentConversationsResponse.mock.calls.length, 1);
+  assert.equal(recentConversationsResponse.mock.calls.length, fetchesBefore);
 });
 
 test('rows keep their identity, and an unnamed session keeps its id, when nothing was renamed', async () => {

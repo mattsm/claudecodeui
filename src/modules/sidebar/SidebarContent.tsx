@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next';
 import { LLMProviderLogo, ScrollArea } from '@/shared/ui';
 import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, Project, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
 import { formatCompactAge, getAllSessions } from '@/modules/sidebar/utils/sidebarProjectFormatting';
+import SidebarAgents from '@/modules/sidebar/SidebarAgents';
 import SidebarFooter from '@/modules/sidebar/SidebarFooter';
 import SidebarHeader from '@/modules/sidebar/SidebarHeader';
 import SidebarProjectList from '@/modules/sidebar/SidebarProjectList';
@@ -129,7 +130,7 @@ type SidebarContentProps = {
   t: TFunction;
 };
 
-/** Rendered by Sidebar as the expanded panel body: header, project list, conversation/archive search results, recent conversations and footer. */
+/** Rendered by Sidebar as the expanded panel body: header, agents list, project list, conversation/archive search results, recent conversations and footer. */
 export default function SidebarContent({
   isPWA,
   isMobile,
@@ -389,7 +390,23 @@ export default function SidebarContent({
       />
 
       <ScrollArea className="flex-1 overflow-y-auto overscroll-contain md:px-1.5 md:py-2">
-        {showConversationSearch ? (
+        {searchMode === 'agents' ? (
+          <SidebarAgents
+            conversations={recentConversations}
+            hasMore={recentConversationsHasMore}
+            isLoading={isRecentConversationsLoading}
+            isLoadingMore={isLoadingMoreRecentConversations}
+            hasError={recentConversationsError}
+            searchFilter={searchFilter}
+            selectedSession={projectListProps.selectedSession}
+            currentTime={projectListProps.currentTime}
+            sessionActions={projectListProps}
+            onConversationSelect={onConversationResultClick}
+            onLoadMore={onLoadMoreRecentConversations}
+            onRetry={onRetryRecentConversations}
+            t={t}
+          />
+        ) : showConversationSearch ? (
           conversationSearchBody
         ) : searchMode === 'conversations' ? (
           <SidebarRecentConversations
