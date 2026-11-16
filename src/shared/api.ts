@@ -292,6 +292,10 @@ export const api = {
     post(`/api/providers/sessions/${encodeURIComponent(sessionId)}/fork`, body),
   handoffSession: (sessionId: string, body: { provider: LLMProvider; model: string }) =>
     post(`/api/providers/sessions/${encodeURIComponent(sessionId)}/handoff`, body),
+  // Starts the session's next message on a fresh context. Its history stays
+  // visible; `cleared` is false when there was no context to clear.
+  clearSessionContext: (sessionId: string) =>
+    post(`/api/providers/sessions/${encodeURIComponent(sessionId)}/clear-context`),
   renameSession: (sessionId: string, summary: string) =>
     put(`/api/providers/sessions/${sessionId}`, { summary }),
   // What one agent of a workflow run did, read from its transcript on demand

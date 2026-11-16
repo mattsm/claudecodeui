@@ -68,7 +68,7 @@ export const scheduledMessagesDb = {
       .prepare(
         `SELECT ${COLUMNS} FROM scheduled_messages
          WHERE user_id = ? AND session_id = ?
-         ORDER BY scheduled_for ASC`
+         ORDER BY scheduled_for ASC, created_at ASC, rowid ASC`
       )
       .all(userId, sessionId) as ScheduledMessageRow[];
   },
@@ -84,8 +84,10 @@ export const scheduledMessagesDb = {
   },
 
   /**
-   * Claims every message whose time has passed, marking them in the same
-   * statement that selects them.
+   * Claims the earliest message whose time has passed for each session not in
+   * `skipSessionIds`, marking them in the same transaction that selects them.
+   * A session's later due messages stay pending (cancellable, banner up) until
+   * claimNextDue takes them, so none is recorded as sent before it actually goes.
    *
    * Claiming is what makes a missed schedule work: the server can be down at
    * the moment a message was due, and the next poll after it starts picks the
@@ -94,7 +96,7 @@ export const scheduledMessagesDb = {
    *
    * A repeating message stays pending and moves to its next slot instead.
    */
-  claimDue(now: Date): ScheduledMessageRow[] {
+  claimDue(now: Date, skipSessionIds: ReadonlySet<string> = new Set()): ScheduledMessageRow[] {
     const db = getConnection();
     const nowIso = now.toISOString();
 
@@ -103,11 +105,17 @@ export const scheduledMessagesDb = {
         .prepare(
           `SELECT ${COLUMNS} FROM scheduled_messages
            WHERE status = 'pending' AND scheduled_for <= ?
-           ORDER BY scheduled_for ASC`
+           ORDER BY scheduled_for ASC, created_at ASC, rowid ASC`
         )
         .all(nowIso) as ScheduledMessageRow[];
+      const sessions = new Set(skipSessionIds);
+      const claimed = due.filter((row) => {
+        if (sessions.has(row.session_id)) return false;
+        sessions.add(row.session_id);
+        return true;
+      });
 
-      for (const row of due) {
+      for (const row of claimed) {
         if (row.repeat_every_minutes) {
           const next = nextRepeatSlot(new Date(row.scheduled_for), row.repeat_every_minutes, now);
           db.prepare(
@@ -120,7 +128,34 @@ export const scheduledMessagesDb = {
         ).run(row.id);
       }
 
-      return due;
+      return claimed;
+    })();
+  },
+
+  /** Claims one session's earliest due message, once its earlier send is done. */
+  claimNextDue(sessionId: string, now: Date): ScheduledMessageRow | null {
+    const db = getConnection();
+    return db.transaction(() => {
+      const row = db
+        .prepare(
+          `SELECT ${COLUMNS} FROM scheduled_messages
+           WHERE session_id = ? AND status = 'pending' AND scheduled_for <= ?
+           ORDER BY scheduled_for ASC, created_at ASC, rowid ASC
+           LIMIT 1`
+        )
+        .get(sessionId, now.toISOString()) as ScheduledMessageRow | undefined;
+      if (!row) return null;
+      if (row.repeat_every_minutes) {
+        const next = nextRepeatSlot(new Date(row.scheduled_for), row.repeat_every_minutes, now);
+        db.prepare(
+          `UPDATE scheduled_messages SET scheduled_for = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+        ).run(next.toISOString(), row.id);
+        return row;
+      }
+      db.prepare(
+        `UPDATE scheduled_messages SET status = 'sent', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).run(row.id);
+      return row;
     })();
   },
 

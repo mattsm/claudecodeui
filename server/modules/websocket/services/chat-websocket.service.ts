@@ -731,11 +731,19 @@ async function handleChatStopTask(
     return;
   }
 
-  const stopped = await dependencies.runtime.stopBackgroundTask(
-    session.provider as LLMProvider,
-    sessionId,
-    taskId,
-  );
+  let stopped: boolean;
+  try {
+    stopped = await dependencies.runtime.stopBackgroundTask(
+      session.provider as LLMProvider,
+      sessionId,
+      taskId,
+    );
+  } catch (error) {
+    // The stop did not take (task still running, or the CLI could not be reached): say so instead of leaving the ✕ silent.
+    console.warn(`[chat] Stopping background task ${taskId} of ${sessionId} failed:`, error);
+    sendProtocolError(ws, 'TASK_STOP_FAILED', error instanceof Error ? error.message : String(error), sessionId, { taskId });
+    return;
+  }
   if (!stopped) {
     sendProtocolError(
       ws,
@@ -853,6 +861,9 @@ function handlePermissionResponse(data: AnyRecord, dependencies: ChatWebSocketDe
  * (`chat_subscribed`, `chat_steer_accepted`, `session_upserted`,
  * `loading_progress`, `protocol_error`, `side_question`).
  */
+/** Why a turn could not start: another run already holds the session. Shared, so a caller can match either refusal. */
+export const RUN_IN_PROGRESS_ERROR = 'A run is already in progress for this session.';
+
 /**
  * Runs a turn for a session with no client attached.
  *
@@ -866,20 +877,6 @@ function handlePermissionResponse(data: AnyRecord, dependencies: ChatWebSocketDe
  * gone away or is busy without `interruptActiveRun`, which the caller reports
  * on the schedule.
  */
-/**
- * How a detached turn went. `started` and `error` are known as soon as the
- * run holds the session (or was refused); `done` settles when the turn ends,
- * with the error, if any, the run itself failed with.
- */
-export type DetachedTurnResult = {
-  started: boolean;
-  error: string | null;
-  done: Promise<{ started: boolean; error: string | null }>;
-};
-
-/** Why a turn could not start: another run already holds the session. */
-export const RUN_IN_PROGRESS_ERROR = 'A run is already in progress for this session.';
-
 export async function runDetachedChatTurn(
   input: {
     sessionId: string;
@@ -894,26 +891,21 @@ export async function runDetachedChatTurn(
     interruptActiveRun?: boolean;
   },
   dependencies: ChatWebSocketDependencies,
-): Promise<DetachedTurnResult> {
-  const refuse = (error: string): DetachedTurnResult => {
-    const result = { started: false, error };
-    return { ...result, done: Promise.resolve(result) };
-  };
-
+): Promise<{ started: boolean; error: string | null }> {
   const session = sessionsDb.getSessionById(input.sessionId);
   if (!session) {
-    return refuse('The session no longer exists.');
+    return { started: false, error: 'The session no longer exists.' };
   }
 
   const provider = session.provider as LLMProvider;
   if (!dependencies.runtime.hasRuntime(provider)) {
-    return refuse(`Provider "${provider}" is not available.`);
+    return { started: false, error: `Provider "${provider}" is not available.` };
   }
 
   const activeRun = chatRunRegistry.getRun(input.sessionId);
   if (activeRun && activeRun.status === 'running') {
     if (!input.interruptActiveRun) {
-      return refuse(RUN_IN_PROGRESS_ERROR);
+      return { started: false, error: RUN_IN_PROGRESS_ERROR };
     }
     // Same shape as `chat.abort`: cancel the provider run and emit the
     // terminal `complete` on its behalf, so every watching client sees the
@@ -927,26 +919,14 @@ export async function runDetachedChatTurn(
     });
   }
 
-  // Resolve once the run holds the session, not when it ends: a turn can run
-  // for hours, and a caller that waited for it held up every other message.
-  let markReserved: () => void = () => {};
-  const reserved = new Promise<void>((resolve) => { markReserved = resolve; });
-  const done = dispatchRun(
+  return dispatchRun(
     null,
     input.userId,
     input.sessionId,
     session,
     { sessionId: input.sessionId, content: input.content, options: input.options ?? {} },
     dependencies,
-    {},
-    () => markReserved(),
   );
-
-  const first = await Promise.race([reserved.then(() => 'reserved' as const), done]);
-  if (first === 'reserved') {
-    return { started: true, error: null, done };
-  }
-  return { ...first, done };
 }
 
 export function handleChatConnection(
