@@ -99,6 +99,7 @@ const agentsElement = (props: Partial<React.ComponentProps<typeof SidebarAgents>
     projects={[HOME, GIT]}
     selectedProject={null}
     onNewAgent={noop}
+    onCreateProject={noop}
     t={t}
     {...props}
   />
@@ -219,26 +220,39 @@ test('with no project on screen, New agent uses the newest chat\'s project', () 
   const started: string[] = [];
   renderAgents({ onNewAgent: (target) => started.push(target.displayName) });
 
-  const button = screen.getByTestId('new-agent-button');
-  assert.ok(button.textContent?.includes('git'));
-  fireEvent.click(button);
+  // The picker beside the button names the project the button will use.
+  assert.equal(screen.getByRole('button', { name: 'New agent in another project' }).textContent, 'git');
+  fireEvent.click(screen.getByTestId('new-agent-button'));
   assert.deepEqual(started, ['git']);
 });
 
-test('the menu beside New agent picks another project', () => {
+test('the picker beside New agent lists every project with its folder and starts the agent in the one picked', () => {
   const started: string[] = [];
   renderAgents({ onNewAgent: (target) => started.push(target.displayName) });
 
   fireEvent.click(screen.getByRole('button', { name: 'New agent in another project' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: 'home' }));
+  assert.deepEqual(
+    screen.getAllByRole('menuitem').map((item) => item.textContent),
+    ['home/home/home', 'git/home/git', 'Another folder...Add a folder as a project, then start the agent in it.'],
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: /^home/ }));
   assert.deepEqual(started, ['home']);
 });
 
-test('one project needs no menu, and New agent stays on an empty list', () => {
+test('the picker offers a folder that is not a project yet', () => {
+  let opened = 0;
+  renderAgents({ onCreateProject: () => { opened += 1; } });
+
+  fireEvent.click(screen.getByRole('button', { name: 'New agent in another project' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: /^Another folder/ }));
+  assert.equal(opened, 1);
+});
+
+test('New agent and its picker stay on an empty list', () => {
   const started: string[] = [];
   renderAgents({ conversations: [], projects: [GIT], onNewAgent: (target) => started.push(target.displayName) });
 
-  assert.equal(screen.queryByRole('button', { name: 'New agent in another project' }) === null, true);
+  assert.equal(screen.getByRole('button', { name: 'New agent in another project' }).textContent, 'git');
   assert.equal(screen.getByTestId('new-agent-button').textContent, 'New agent');
   fireEvent.click(screen.getByTestId('new-agent-button'));
   assert.deepEqual(started, ['git']);

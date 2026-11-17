@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { Bot, ChevronDown, Folder, Loader2, Pin, Plus } from 'lucide-react';
+import { Bot, Folder, FolderPlus, Loader2, Pin, Plus } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { ActionMenu, Button, LLMProviderLogo, SessionTitle, Tooltip } from '@/shared/ui';
@@ -55,6 +55,8 @@ type SidebarAgentsProps = {
   selectedProject: Project | null;
   /** Opens an empty chat in the project, the way the Projects tab's "New Session" does. */
   onNewAgent: (project: Project) => void;
+  /** Opens the add-a-project dialog, for a folder that is not a project yet. */
+  onCreateProject: () => void;
   t: TFunction;
 };
 
@@ -171,10 +173,11 @@ function AgentChatRow({ row, badge, pinnedIds, onTogglePin, selectedSession, cur
 const projectLabel = (project: Project) => project.displayName || project.projectId;
 
 /**
- * The "New agent" button. A chat needs a project: the one on screen, else the
- * one the newest chat is in. With several projects a menu picks another.
+ * The "New agent" button and its project picker. A chat needs a project: the
+ * button uses the one on screen, else the one the newest chat is in, and the
+ * picker beside it names that project and starts the chat in another one.
  */
-function NewAgentButton({ projects, selectedProject, conversations, onNewAgent, t }: Pick<SidebarAgentsProps, 'projects' | 'selectedProject' | 'conversations' | 'onNewAgent' | 't'>) {
+function NewAgentButton({ projects, selectedProject, conversations, onNewAgent, onCreateProject, t }: Pick<SidebarAgentsProps, 'projects' | 'selectedProject' | 'conversations' | 'onNewAgent' | 'onCreateProject' | 't'>) {
   const project = projects.find((candidate) => candidate.projectId === selectedProject?.projectId)
     ?? projects.find((candidate) => candidate.projectId === conversations[0]?.projectId)
     ?? projects[0];
@@ -196,30 +199,36 @@ function NewAgentButton({ projects, selectedProject, conversations, onNewAgent, 
         data-testid="new-agent-button"
       >
         <Plus className="h-3 w-3 flex-shrink-0" />
-        <span className="flex-shrink-0">{label}</span>
-        {projects.length > 1 && (
-          <span className="min-w-0 flex-1 truncate text-right font-normal opacity-70">{projectLabel(project)}</span>
-        )}
+        <span className="truncate">{label}</span>
       </Button>
-      {projects.length > 1 && (
-        <ActionMenu
-          label={pickProjectLabel}
-          ariaLabel={pickProjectLabel}
-          icon={ChevronDown}
-          iconOnly
-          portal
-          variant="ghost"
-          size="sm"
-          className="flex-none"
-          triggerClassName="h-8 px-2 text-muted-foreground hover:text-foreground"
-          items={projects.map((candidate) => ({
+      <ActionMenu
+        label={projectLabel(project)}
+        ariaLabel={pickProjectLabel}
+        icon={Folder}
+        portal
+        variant="outline"
+        size="sm"
+        className="min-w-0 max-w-[55%] flex-none"
+        triggerClassName="h-8 w-full min-w-0 gap-1.5 px-2 text-xs font-normal [&>span]:min-w-0 [&>span]:truncate [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:flex-shrink-0"
+        menuClassName="w-[280px] rounded-xl p-1.5 shadow-xl"
+        items={[
+          ...projects.map((candidate) => ({
             key: candidate.projectId,
             label: projectLabel(candidate),
+            description: candidate.fullPath || candidate.path || undefined,
             icon: Folder,
             onSelect: () => onNewAgent(candidate),
-          }))}
-        />
-      )}
+          })),
+          {
+            key: 'another-folder',
+            label: t('agents.anotherFolder', 'Another folder...'),
+            description: t('agents.anotherFolderHint', 'Add a folder as a project, then start the agent in it.'),
+            icon: FolderPlus,
+            showDividerBefore: true,
+            onSelect: onCreateProject,
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -238,6 +247,7 @@ export default function SidebarAgents(props: SidebarAgentsProps) {
         selectedProject={props.selectedProject}
         conversations={props.conversations}
         onNewAgent={props.onNewAgent}
+        onCreateProject={props.onCreateProject}
         t={props.t}
       />
       <AgentsList {...props} />

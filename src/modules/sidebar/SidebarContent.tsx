@@ -407,6 +407,7 @@ export default function SidebarContent({
             projects={projectListProps.projects}
             selectedProject={projectListProps.selectedProject}
             onNewAgent={projectListProps.onNewSession}
+            onCreateProject={onCreateProject}
             t={t}
           />
         ) : showConversationSearch ? (
