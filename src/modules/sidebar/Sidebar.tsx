@@ -296,7 +296,7 @@ function Sidebar({
             searchMode={searchMode}
             onSearchModeChange={(mode) => {
               setSearchMode(mode);
-              if (mode !== 'projects' && mode !== 'conversations') clearConversationResults();
+              if (mode !== 'projects' && mode !== 'conversations' && mode !== 'agents') clearConversationResults();
             }}
             conversationResults={conversationResults}
             isSearching={isSearching}

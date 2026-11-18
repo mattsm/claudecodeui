@@ -9,8 +9,8 @@ import type { Project, RecentConversationListItem } from '@/shared/types';
 /**
  * The Agents tab is the sidebar's default and reads the same recent-chats feed
  * as the Conversations tab, at the largest page the server allows. The search
- * box filters what is loaded, so typing must neither refetch the feed nor start
- * a transcript search.
+ * box filters what is loaded, so typing must not refetch the feed. It also
+ * starts the transcript search, for chats whose title does not say it.
  */
 
 const feedRequests: { limit?: number; offset?: number }[] = [];
@@ -116,7 +116,7 @@ test('the Conversations tab keeps its own page size', async () => {
   });
 });
 
-test('typing in the Agents tab neither refetches the feed nor searches transcripts', async () => {
+test('typing in the Agents tab searches transcripts and does not refetch the feed', async () => {
   const { result } = renderController();
   await waitFor(() => {
     assert.equal(result.current.recentConversations.length, 2);
@@ -128,7 +128,7 @@ test('typing in the Agents tab neither refetches the feed nor searches transcrip
   await settle();
 
   assert.equal(feedRequests.length, 1);
-  assert.deepEqual(openedUrls, []);
+  assert.deepEqual(openedUrls, ['/api/providers/search/sessions?q=map ui']);
 });
 
 test('a chat started while the feed is empty shows up', async () => {

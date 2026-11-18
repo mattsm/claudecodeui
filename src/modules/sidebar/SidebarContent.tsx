@@ -6,6 +6,7 @@ import { LLMProviderLogo, ScrollArea } from '@/shared/ui';
 import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, Project, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
 import { formatCompactAge, getAllSessions } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import SidebarAgents from '@/modules/sidebar/SidebarAgents';
+import { agentEntryRows, filterAgentEntries, groupAgentConversations } from '@/modules/sidebar/utils/agentGroups';
 import SidebarFooter from '@/modules/sidebar/SidebarFooter';
 import SidebarHeader from '@/modules/sidebar/SidebarHeader';
 import SidebarProjectList from '@/modules/sidebar/SidebarProjectList';
@@ -185,10 +186,16 @@ export default function SidebarContent({
   );
   // In the Projects tab the list already shows the sessions whose titles
   // matched, so the title section only lists the ones it does not.
+  // The Agents tab does the same with the chats its title filter left listed.
+  const agentsSearchActive = searchMode === 'agents' && searchActive;
   const visibleSessionIds = new Set(
     projectsSearchActive
       ? projectListProps.filteredProjects.flatMap((project) => (project.sessions ?? []).map((session) => String(session.id)))
-      : [],
+      : agentsSearchActive
+        ? filterAgentEntries(groupAgentConversations(recentConversations), searchFilter)
+          .flatMap(agentEntryRows)
+          .map((row) => row.conversation.sessionId)
+        : [],
   );
   const titleResults = (conversationResults?.titleResults ?? []).filter(
     (session) => !visibleSessionIds.has(String(session.sessionId)),
@@ -391,6 +398,7 @@ export default function SidebarContent({
 
       <ScrollArea className="flex-1 overflow-y-auto overscroll-contain md:px-1.5 md:py-2">
         {searchMode === 'agents' ? (
+          <>
           <SidebarAgents
             conversations={recentConversations}
             hasMore={recentConversationsHasMore}
@@ -408,8 +416,17 @@ export default function SidebarContent({
             selectedProject={projectListProps.selectedProject}
             onNewAgent={projectListProps.onNewSession}
             onCreateProject={onCreateProject}
+            // While the transcript search runs or has hits, they follow below
+            // and "no agents match" would contradict them.
+            showNoMatches={!agentsSearchActive || (!isSearching && !hasSearchResults)}
             t={t}
           />
+          {agentsSearchActive && conversationResultsList && (
+            <div className="mt-2 border-t border-border/60 pt-2" data-testid="agents-transcript-results">
+              {conversationResultsList}
+            </div>
+          )}
+          </>
         ) : showConversationSearch ? (
           conversationSearchBody
         ) : searchMode === 'conversations' ? (

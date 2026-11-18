@@ -193,6 +193,13 @@ test('the search filters by title and opens a collapsed group', () => {
   assert.deepEqual(rowTitles(document.body), ['wireless lab master', 'wireless lab: release']);
 });
 
+test('a search with no title hit stays quiet while transcript hits are listed under it', () => {
+  renderAgents({ searchFilter: 'zzz', showNoMatches: false });
+
+  assert.equal(screen.queryAllByTestId('agent-chat-row').length, 0);
+  assert.equal(screen.queryByText('No agents match this search.') === null, true);
+});
+
 test('a search with no hit says so', () => {
   renderAgents({ searchFilter: 'zzz' });
 

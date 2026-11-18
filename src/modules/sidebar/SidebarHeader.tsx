@@ -72,7 +72,7 @@ export default function SidebarHeader({
 }: SidebarHeaderProps) {
   const showSearchTools = (projectsCount > 0 || runningSessionsCount > 0 || archivedSessionsCount > 0 || isArchivedSessionsLoading) && !isLoading;
   const searchPlaceholder = searchMode === 'agents'
-    ? t('search.agentsPlaceholder', 'Search agents...')
+    ? t('search.agentsPlaceholder', 'Search agents and transcripts...')
     : searchMode === 'conversations'
     ? t('search.conversationsPlaceholder')
     : searchMode === 'archived'

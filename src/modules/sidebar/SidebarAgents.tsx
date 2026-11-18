@@ -57,6 +57,8 @@ type SidebarAgentsProps = {
   onNewAgent: (project: Project) => void;
   /** Opens the add-a-project dialog, for a folder that is not a project yet. */
   onCreateProject: () => void;
+  /** False while transcript hits for the same search are listed under the tab. */
+  showNoMatches?: boolean;
   t: TFunction;
 };
 
@@ -268,6 +270,7 @@ function AgentsList({
   onConversationSelect,
   onLoadMore,
   onRetry,
+  showNoMatches = true,
   t,
 }: SidebarAgentsProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
@@ -354,6 +357,9 @@ function AgentsList({
   ) : null;
 
   if (pinned.length + entries.length === 0) {
+    if (isFiltering && !showNoMatches) {
+      return loadMoreButton;
+    }
     return (
       <div className="px-4 py-10 text-center">
         <Bot className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
