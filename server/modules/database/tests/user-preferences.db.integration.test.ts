@@ -169,7 +169,7 @@ test('follow-ups queued while one waits are appended in order, not overwritten',
     assert.equal(second?.appended, true);
     assert.equal(third?.appended, true);
     const expected = {
-      content: 'A\n\nB\n\nC',
+      content: 'A\n\n---\n\nB\n\n---\n\nC',
       options: { model: 'opus' },
       attachments: [{ name: 'a.png' }, { name: 'c.txt' }],
     };
@@ -198,7 +198,7 @@ test('a claim listed before a follow-up was appended no longer matches, so it is
     sessionDraftsDb.appendQueuedMessage(USER_ID, 'session-a', { content: 'B', attachments: [] });
 
     assert.equal(sessionDraftsDb.claimQueuedMessage(listedBeforeB), false);
-    assert.equal((queuedIn('session-a') as { content: string }).content, 'A\n\nB');
+    assert.equal((queuedIn('session-a') as { content: string }).content, 'A\n\n---\n\nB');
   });
 });
 
@@ -272,7 +272,7 @@ test('a claim restored after losing a race goes back in front of a follow-up que
     sessionDraftsDb.restoreQueuedMessage(claimed);
 
     assert.deepEqual(queuedIn('session-a'), {
-      content: 'A\n\nB',
+      content: 'A\n\n---\n\nB',
       options: { model: 'opus' },
       attachments: [{ name: 'a.png' }],
     });

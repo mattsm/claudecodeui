@@ -19,7 +19,7 @@ import { useOptionalUiPreferences } from '@/shared/context/UiPreferencesContext'
 import { MemoryCitations } from '@/modules/chat/transcript/MemoryCitations';
 import { formatMessageTimestamp } from '@/modules/chat/utils/messageTimestamp';
 import { useDismissSideQuestion } from '@/modules/chat/hooks/useSideQuestions';
-import { parsePeerMessage } from '@/modules/chat/utils/peerMessages';
+import { splitUserTurn } from '@/modules/chat/utils/peerMessages';
 
 type MessageComponentProps = {
   message: ChatMessage;
@@ -124,10 +124,47 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
   // A message another chat sent is folded to one line until it is opened. An
   // exported document has nothing to click, so it prints the message whole.
   const [isPeerMessageOpen, setIsPeerMessageOpen] = useState(false);
-  const peerMessage = useMemo(
-    () => (message.type === 'user' && !message.sideQuestion && !isExporting ? parsePeerMessage(userCopyContent) : null),
+  const userTurn = useMemo(
+    () => (message.type === 'user' && !message.sideQuestion && !isExporting ? splitUserTurn(userCopyContent) : null),
     [isExporting, message.sideQuestion, message.type, userCopyContent],
   );
+  // A turn that is all from other chats folds as a whole. One that also holds
+  // the user's own text keeps that text in the bubble and folds only the rest.
+  const hasOwnText = Boolean(userTurn && userTurn.ownText.trim());
+  const peerMessage = userTurn && userTurn.peerParts.length > 0 && !hasOwnText ? userTurn.peerParts[0] : null;
+  const mixedPeerParts = userTurn && hasOwnText ? userTurn.peerParts : [];
+  const [openPeerParts, setOpenPeerParts] = useState<ReadonlySet<number>>(() => new Set());
+  const mixedPeerToggles = mixedPeerParts.map((part, index) => {
+    const isOpen = openPeerParts.has(index);
+    return (
+      <div key={index} className="flex max-w-full flex-col items-end gap-1">
+        <button
+          type="button"
+          onClick={() => setOpenPeerParts((previous) => {
+            const next = new Set(previous);
+            if (!next.delete(index)) {
+              next.add(index);
+            }
+            return next;
+          })}
+          aria-expanded={isOpen}
+          title={t('message.peerMessageToggle', 'Message from another chat')}
+          data-testid="peer-message-toggle"
+          className="flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <span aria-hidden className={`inline-block font-mono transition-transform ${isOpen ? 'rotate-90' : ''}`}>&gt;</span>
+          <span className="min-w-0 truncate">{part.preview}</span>
+        </button>
+        {isOpen && (
+          <div dir="auto" className="max-w-full break-words rounded-xl border border-dashed border-border/70 px-3 py-2 font-serif text-sm text-muted-foreground">
+            <Markdown breaks className="prose prose-sm max-w-none font-serif dark:prose-invert">
+              {part.text}
+            </Markdown>
+          </div>
+        )}
+      </div>
+    );
+  });
   const peerMessageToggle = peerMessage ? (
     <button
       type="button"
@@ -226,6 +263,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
         <div className="flex w-full items-end space-x-0 sm:w-auto sm:max-w-[85%] sm:space-x-3 md:max-w-md lg:max-w-lg xl:max-w-xl">
           <div className="flex min-w-0 flex-1 flex-col items-end gap-2 sm:flex-initial">
             {peerMessageToggle}
+            {mixedPeerToggles}
             {message.images && message.images.length > 0 && (
               <ChatMessageImages
                 images={message.images}
@@ -242,7 +280,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                     breaks
                     className="prose prose-sm max-w-none font-serif dark:prose-invert"
                   >
-                    {message.content}
+                    {mixedPeerParts.length > 0 && userTurn ? userTurn.ownText : message.content}
                   </Markdown>
                 </div>
                 <div className="mt-1 flex items-center justify-end gap-1 text-xs text-muted-foreground">

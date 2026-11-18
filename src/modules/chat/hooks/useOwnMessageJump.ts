@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { RefObject } from 'react';
 
 import type { ChatMessage } from '@/shared/types';
-import { parsePeerMessage } from '@/modules/chat/utils/peerMessages';
+import { splitUserTurn } from '@/modules/chat/utils/peerMessages';
 
 /** A message the user typed: not a tool result, a task report the harness delivered as a user turn, or a message from another chat. */
 export function isOwnPromptMessage(message: ChatMessage): boolean {
@@ -10,7 +10,12 @@ export function isOwnPromptMessage(message: ChatMessage): boolean {
     return false;
   }
   const content = message.content.trimStart();
-  return content.length > 0 && !content.startsWith('<task-notification>') && !parsePeerMessage(content);
+  if (content.length === 0 || content.startsWith('<task-notification>')) {
+    return false;
+  }
+  // A turn that carries the user's text next to a note from another chat still counts.
+  const { peerParts, ownText } = splitUserTurn(content);
+  return peerParts.length === 0 || ownText.trim().length > 0;
 }
 
 /**

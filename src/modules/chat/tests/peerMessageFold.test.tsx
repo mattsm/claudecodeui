@@ -7,7 +7,7 @@ import { test } from 'vitest';
 import '@/modules/i18n';
 import MessageComponent from '@/modules/chat/transcript/MessageComponent';
 import { isOwnPromptMessage } from '@/modules/chat/hooks/useOwnMessageJump';
-import { parsePeerMessage } from '@/modules/chat/utils/peerMessages';
+import { parsePeerMessage, splitUserTurn } from '@/modules/chat/utils/peerMessages';
 import { UiPreferencesProvider } from '@/shared/context/UiPreferencesContext';
 import type { ChatMessage } from '@/shared/types';
 
@@ -129,4 +129,44 @@ test('a message from another chat does not count as one of the user\'s own', () 
   assert.equal(isOwnPromptMessage(userMessage('can you check the lab')), true);
   assert.equal(isOwnPromptMessage(userMessage('From the wireless lab master: main moved.')), false);
   assert.equal(isOwnPromptMessage(userMessage(`Another Claude session sent a message:\n${CROSS_SESSION}`)), false);
+});
+
+const NUDGE = 'From the merge queue: list-1052 PASSED its far run.\n\nNothing is needed from you.';
+const OWN = 'what was my last message ? about running on my mbp ?';
+const MERGED = `${NUDGE}\n\n---\n\n${OWN}`;
+
+test('a turn the server joined is split into the other chat\'s part and the user\'s own', () => {
+  const turn = splitUserTurn(MERGED);
+  assert.deepEqual(turn.peerParts.map((part) => part.preview), ['From the merge queue: list-1052 PASSED its far run.']);
+  assert.equal(turn.peerParts[0].text, NUDGE);
+  assert.equal(turn.ownText, OWN);
+
+  // The user's text first, two notes, and a second message of the user's own.
+  const busy = splitUserTurn(`first of mine\n\n---\n\n${NUDGE}\n\n---\n\ntick: check the queue\n\n---\n\nsecond of mine`);
+  assert.equal(busy.peerParts.length, 2);
+  assert.equal(busy.ownText, 'first of mine\n\n---\n\nsecond of mine');
+
+  // Nothing from another chat: the turn is left exactly as typed, rules and all.
+  assert.deepEqual(splitUserTurn('one\n\n---\n\ntwo'), { peerParts: [], ownText: 'one\n\n---\n\ntwo' });
+  assert.equal(splitUserTurn(NUDGE).ownText, '');
+});
+
+test('the user\'s own queued text stays on screen when it was joined onto a note from another chat', () => {
+  renderMessage(userMessage(MERGED));
+
+  // What the user typed is in the bubble without a click.
+  assert.ok(screen.getByText(OWN));
+  const toggle = screen.getByTestId('peer-message-toggle');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.ok(toggle.textContent?.includes('From the merge queue: list-1052 PASSED its far run.'));
+  assert.equal(screen.queryByText('Nothing is needed from you.') === null, true);
+
+  fireEvent.click(toggle);
+  assert.ok(screen.getByText('Nothing is needed from you.'));
+  assert.ok(screen.getByText(OWN));
+});
+
+test('a joined turn with the user\'s text in it counts as one of the user\'s own messages', () => {
+  assert.equal(isOwnPromptMessage(userMessage(MERGED)), true);
+  assert.equal(isOwnPromptMessage(userMessage(`${NUDGE}\n\n---\n\ntick: check the queue`)), false);
 });

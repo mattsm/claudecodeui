@@ -370,7 +370,7 @@ test('follow-ups queued during one turn are all sent, once, in order, as the nex
     assert.equal(await dispatchQueuedMessages(createRuntime(runs)), 0, 'nothing is left to send');
 
     assert.equal(runs.length, 1);
-    assert.equal(runs[0].command, 'follow-up A\n\nfollow-up B\n\nfollow-up C');
+    assert.equal(runs[0].command, 'follow-up A\n\n---\n\nfollow-up B\n\n---\n\nfollow-up C');
     assert.equal(runs[0].options.model, 'opus');
     assert.equal(sessionDraftsDb.getDrafts(userId).length, 0);
   });

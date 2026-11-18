@@ -49,15 +49,24 @@ function parseQueuedMessage(raw: string | null): unknown | null {
 }
 
 /**
+ * Goes between queued messages joined into one turn. The messages can have
+ * different authors (a note another chat queued, then the user's own), and
+ * the transcript only keeps the joined text, so the boundary has to be in it.
+ * The client splits a turn on the same text (`QUEUED_MESSAGE_SEPARATOR` in
+ * src/modules/chat/utils/peerMessages.ts).
+ */
+export const QUEUED_MESSAGE_SEPARATOR = '\n\n---\n\n';
+
+/**
  * Joins a message queued later onto the one already waiting, so both are sent
- * in one turn, in the order they were queued. Text is separated by a blank
- * line and attachments keep their order. The later message's send options win:
- * they are the composer settings the user chose most recently.
+ * in one turn, in the order they were queued. Text is separated by a rule and
+ * attachments keep their order. The later message's send options win: they
+ * are the composer settings the user chose most recently.
  */
 function mergeQueuedMessages(earlier: QueuedChatMessage, later: QueuedChatMessage): QueuedChatMessage {
   const options = later.options ?? earlier.options;
   return {
-    content: [earlier.content, later.content].filter((part) => part.trim()).join('\n\n'),
+    content: [earlier.content, later.content].filter((part) => part.trim()).join(QUEUED_MESSAGE_SEPARATOR),
     ...(options ? { options } : {}),
     attachments: [...earlier.attachments, ...later.attachments],
   };

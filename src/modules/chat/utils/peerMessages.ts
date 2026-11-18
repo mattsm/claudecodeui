@@ -60,3 +60,37 @@ export function parsePeerMessage(content: string): PeerMessage | null {
   const line = firstLine(text);
   return NUDGE_OPENERS.some((opener) => opener.test(line)) ? { preview: toPreview(line, line) } : null;
 }
+
+/**
+ * What the server puts between queued messages it joined into one turn
+ * (`QUEUED_MESSAGE_SEPARATOR` in server/modules/database/repositories/session-drafts.db.ts).
+ */
+export const QUEUED_MESSAGE_SEPARATOR = '\n\n---\n\n';
+const QUEUED_MESSAGE_BOUNDARY = /\n[ \t]*\n---[ \t]*\n[ \t]*\n/;
+
+export type PeerMessagePart = PeerMessage & {
+  /** The part's whole text, shown when its fold is opened. */
+  text: string;
+};
+
+/**
+ * A user turn split into the parts other chats sent and the user's own text.
+ *
+ * A chat has one queued turn, so a message the user queues while a note from
+ * another chat is waiting is joined onto that note. Folding the turn as a
+ * whole would hide what the user typed; only the parts that came from another
+ * chat fold.
+ */
+export function splitUserTurn(content: string): { peerParts: PeerMessagePart[]; ownText: string } {
+  const peerParts: PeerMessagePart[] = [];
+  const ownParts: string[] = [];
+  for (const part of content.split(QUEUED_MESSAGE_BOUNDARY)) {
+    const peer = parsePeerMessage(part);
+    if (peer) {
+      peerParts.push({ ...peer, text: part.trim() });
+    } else if (part.trim()) {
+      ownParts.push(part.trim());
+    }
+  }
+  return { peerParts, ownText: peerParts.length > 0 ? ownParts.join(QUEUED_MESSAGE_SEPARATOR) : content };
+}
