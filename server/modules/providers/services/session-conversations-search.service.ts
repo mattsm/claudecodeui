@@ -6,7 +6,9 @@ import { spawn } from 'cross-spawn';
 import { rgPath } from '@vscode/ripgrep';
 
 import { isClaudeNonTurnMessageRow, stripAnsiSequences } from '@/shared/utils.js';
-import { projectsDb, sessionsDb } from '@/modules/database/index.js';
+import { getDatabasePath, projectsDb, sessionsDb } from '@/modules/database/index.js';
+import { SessionSearchIndex, toSessionToken } from '@/modules/providers/services/session-search-index.service.js';
+import type { IndexedLink } from '@/modules/providers/services/session-search-index.service.js';
 
 type AnyRecord = Record<string, any>;
 type SearchableProvider = 'claude' | 'codex';
@@ -78,6 +80,18 @@ type SearchRuntime = {
   matchedSessionKeys: Set<string>;
   claudeSessionsByFileKey: Map<string, SearchableSessionRow[]>;
   claudeFileResultsCache: Map<string, Map<string, SessionConversationResult>>;
+  /** Set when the transcript index answers for Claude sessions instead of their files. */
+  indexed: IndexedSearch | null;
+};
+
+type QueryMatcher = Pick<SearchRuntime, 'matchesQuery' | 'buildSnippet'>;
+
+/** One query against the transcript index: what to look up, and the check a candidate must pass. */
+type IndexedSearch = {
+  index: SessionSearchIndex;
+  passes: { expression: string; matcher: QueryMatcher }[];
+  sessionTokens: Set<string>;
+  linksBySession: Map<string, IndexedLink[]>;
 };
 
 type SearchablePathEntry = {
@@ -840,10 +854,218 @@ function addSessionMatch(
   runtime.totalMatches += 1;
 }
 
+const INDEX_PAGE_ROWS = 40;
+/** Candidates read per session before giving up on finding two that pass the exact check. */
+const INDEX_MAX_CANDIDATES = 400;
+
+/**
+ * The full-text expression for a query: every word must start a token, the way
+ * createWordMatcher reads it. A word made of several tokens ("pull/265", a URL)
+ * is a phrase. Null when a word has no letter or digit to look up.
+ */
+export function toIndexExpression(words: string[], { prefix = true } = {}): string | null {
+  const parts: string[] = [];
+  for (const word of words) {
+    const tokens = word.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    if (tokens.length === 0) {
+      return null;
+    }
+    parts.push(`(text : "${tokens.join(' ')}"${prefix ? ' *' : ''})`);
+  }
+  return parts.join(' AND ');
+}
+
+const GITHUB_ITEM_URL = /(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/(pull|issues)\/(\d+)/i;
+const REPOSITORY_REFERENCE = /^(?:([\w.-]+)\/)?([\w.-]+)#(\d+)$/;
+
+/**
+ * Reads a link out of a query, so the same pull request is found however a
+ * chat wrote it: a GitHub URL also looks for "repo#123", "repo#123" also looks
+ * for the URL, and anything with a slash is looked up among the links a chat's
+ * commands and their output held.
+ */
+export function decodeLinkQuery(query: string): { exactTexts: string[]; linkNeedles: string[] } {
+  const word = query.trim();
+  if (!word || /\s/.test(word)) {
+    return { exactTexts: [], linkNeedles: [] };
+  }
+
+  // A numbered item is matched whole: #265 is not #2651.
+  const item = GITHUB_ITEM_URL.exec(word);
+  if (item) {
+    const [, owner, repository, kind, number] = item;
+    const link = `github.com/${owner}/${repository}/${kind}/${number}`;
+    return { exactTexts: [link, `${repository}#${number}`], linkNeedles: [link] };
+  }
+
+  const reference = REPOSITORY_REFERENCE.exec(word);
+  if (reference) {
+    const [, owner, repository, number] = reference;
+    const base = `${owner ? `${owner}/` : ''}${repository}`;
+    return { exactTexts: [word], linkNeedles: [`${base}/pull/${number}`, `${base}/issues/${number}`] };
+  }
+
+  if (word.includes('/')) {
+    return { exactTexts: [], linkNeedles: [word.replace(/^https?:\/\//i, '').replace(/\/+$/, '')] };
+  }
+  return { exactTexts: [], linkNeedles: [] };
+}
+
+/** A link counts when the text is not cut off mid-number: "pull/26" must not find pull/265. */
+function linkHoldsNeedle(url: string, needle: string): boolean {
+  const lower = url.toLowerCase();
+  const wanted = needle.toLowerCase();
+  for (let at = lower.indexOf(wanted); at !== -1; at = lower.indexOf(wanted, at + 1)) {
+    const next = lower[at + wanted.length];
+    if (!/\d$/.test(wanted) || next === undefined || !/\d/.test(next)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Looks the query up in the transcript index. Null when the index cannot answer and the files are read instead. */
+async function prepareIndexedSearch(
+  claudeSessions: SearchableSessionRow[],
+  query: string,
+  words: string[],
+  matcher: QueryMatcher,
+  signal: AbortSignal | null,
+): Promise<IndexedSearch | null> {
+  const index = searchIndex;
+  if (!index || !index.isReady() || claudeSessions.length === 0) {
+    return null;
+  }
+  const expression = toIndexExpression(words);
+  if (!expression) {
+    return null;
+  }
+
+  try {
+    await index.refresh([...new Set(claudeSessions.map((session) => session.jsonl_path))], signal);
+
+    const { exactTexts, linkNeedles } = decodeLinkQuery(query);
+    const passes: IndexedSearch['passes'] = [];
+    for (const exactText of exactTexts) {
+      const exactExpression = toIndexExpression([exactText.toLowerCase()], { prefix: false });
+      if (!exactExpression) {
+        continue;
+      }
+      const exact = new RegExp(`(?<![\\p{L}\\p{N}_-])${escapeRegex(exactText)}(?!\\d)`, 'iu');
+      passes.push({
+        expression: exactExpression,
+        matcher: {
+          matchesQuery: (text) => exact.test(text),
+          buildSnippet: createWordMatcher([exactText.toLowerCase()]).buildSnippet,
+        },
+      });
+    }
+    if (passes.length === 0) {
+      passes.push({ expression, matcher });
+    }
+
+    const sessionTokens = new Set<string>();
+    for (const pass of passes) {
+      for (const token of index.sessionTokensMatching(pass.expression)) {
+        sessionTokens.add(token);
+      }
+    }
+
+    const linksBySession = new Map<string, IndexedLink[]>();
+    if (linkNeedles.length > 0) {
+      for (const link of index.linksContaining(linkNeedles)) {
+        if (!linkNeedles.some((needle) => linkHoldsNeedle(link.url, needle))) {
+          continue;
+        }
+        linksBySession.set(link.sessionId, [...(linksBySession.get(link.sessionId) ?? []), link]);
+      }
+    }
+
+    return { index, passes, sessionTokens, linksBySession };
+  } catch (error) {
+    console.warn('[search] Transcript index failed; reading the files instead', error);
+    return null;
+  }
+}
+
+/** One Claude session's matches, from the transcript index. */
+function readIndexedSessionMatches(
+  session: SearchableSessionRow,
+  runtime: SearchRuntime,
+  indexed: IndexedSearch,
+): SessionConversationResult | null {
+  const providerSessionId = session.provider_session_id || session.session_id;
+  const matches: SessionConversationMatch[] = [];
+  const seenMessages = new Set<string>();
+  const addLinkMatch = (link: IndexedLink): void => {
+    const label = link.kind === 'pr' ? 'Pull request of this chat: ' : 'Link in a command or its output: ';
+    addSessionMatch(runtime, matches, {
+      role: 'assistant',
+      snippet: `${label}${link.url}`,
+      highlights: [{ start: label.length, end: label.length + link.url.length }],
+      timestamp: link.timestamp,
+      provider: 'claude',
+      messageUuid: null,
+    });
+  };
+
+  // A pull request the session recorded as its own says the most, so it leads.
+  const links = indexed.linksBySession.get(providerSessionId) ?? [];
+  links.filter((link) => link.kind === 'pr').forEach(addLinkMatch);
+
+  if (indexed.sessionTokens.has(toSessionToken(providerSessionId))) {
+    for (const pass of indexed.passes) {
+      for (let offset = 0; offset < INDEX_MAX_CANDIDATES; offset += INDEX_PAGE_ROWS) {
+        if (matches.length >= MAX_MATCHES_PER_SESSION || runtime.totalMatches >= runtime.limit) {
+          break;
+        }
+        const rows = indexed.index.messagesMatching(pass.expression, providerSessionId, INDEX_PAGE_ROWS, offset);
+        for (const row of rows) {
+          const key = row.uuid ?? `${row.timestamp}\n${row.text.slice(0, 80)}`;
+          // The index matches whole tokens; the matcher is the search's own rule.
+          if (seenMessages.has(key) || !pass.matcher.matchesQuery(row.text)) {
+            continue;
+          }
+          seenMessages.add(key);
+          const { snippet, highlights } = pass.matcher.buildSnippet(row.text);
+          addSessionMatch(runtime, matches, {
+            role: row.role,
+            snippet,
+            highlights,
+            timestamp: row.timestamp,
+            provider: 'claude',
+            messageUuid: row.uuid,
+          });
+        }
+        if (rows.length < INDEX_PAGE_ROWS) {
+          break;
+        }
+      }
+    }
+  }
+
+  // Links that only passed through a command or its output come last.
+  links.filter((link) => link.kind !== 'pr').forEach(addLinkMatch);
+
+  if (matches.length === 0) {
+    return null;
+  }
+  return {
+    sessionId: session.session_id,
+    provider: 'claude',
+    sessionSummary: toSummaryText(session.custom_name ?? null, indexed.index.firstUserText(providerSessionId), 'New Session'),
+    matches,
+  };
+}
+
 async function parseClaudeSessionMatches(
   session: SearchableSessionRow,
   runtime: SearchRuntime,
 ): Promise<SessionConversationResult | null> {
+  if (runtime.indexed) {
+    return readIndexedSessionMatches(session, runtime, runtime.indexed);
+  }
+
   const fileKey = normalizeComparablePath(session.jsonl_path);
   if (!fileKey) {
     return null;
@@ -1202,17 +1424,31 @@ export async function searchConversations(
     pathSessions.push(session);
   }
 
+  const matcher = createWordMatcher(words);
+  const claudeSessions = searchableSessions.filter((session) => session.provider === 'claude');
+  const indexed = await prepareIndexedSearch(claudeSessions, safeQuery, words, matcher, signal);
+  // With the index answering for Claude, only the other providers' files are read.
+  const indexedPathKeys = new Set(indexed ? claudeSessions.map((session) => normalizeComparablePath(session.jsonl_path)) : []);
+
   const matchedFileKeys = await findMatchedFileKeys(
-    searchablePathEntries,
+    searchablePathEntries.filter((entry) => !indexedPathKeys.has(entry.normalizedPath)),
     safeQuery,
     words,
     signal ?? undefined,
   );
-  if (isAborted() || matchedFileKeys.size === 0) {
+  if (isAborted()) {
     return { results: [], titleResults, totalMatches: 0, query: safeQuery };
   }
 
   const matchedSessionKeys = new Set<string>();
+  if (indexed) {
+    for (const session of claudeSessions) {
+      const providerSessionId = session.provider_session_id || session.session_id;
+      if (indexed.sessionTokens.has(toSessionToken(providerSessionId)) || indexed.linksBySession.has(providerSessionId)) {
+        matchedSessionKeys.add(getSessionKey(session));
+      }
+    }
+  }
   for (const fileKey of matchedFileKeys) {
     const sessions = sessionsByPathKey.get(fileKey);
     if (!sessions) {
@@ -1229,14 +1465,19 @@ export async function searchConversations(
   const results: ProjectConversationResult[] = [];
   let scannedProjects = 0;
 
+  if (matchedSessionKeys.size === 0) {
+    return { results: [], titleResults, totalMatches: 0, query: safeQuery };
+  }
+
   const runtime: SearchRuntime = {
-    ...createWordMatcher(words),
+    ...matcher,
     limit: safeLimit,
     totalMatches: 0,
     isAborted,
     matchedSessionKeys,
     claudeSessionsByFileKey: new Map<string, SearchableSessionRow[]>(),
     claudeFileResultsCache: new Map<string, Map<string, SessionConversationResult>>(),
+    indexed,
   };
 
   for (const [fileKey, sessions] of sessionsByPathKey.entries()) {
@@ -1297,6 +1538,80 @@ export async function searchConversations(
     totalMatches: runtime.totalMatches,
     query: safeQuery,
   };
+}
+
+/** The transcript index, once initializeSessionSearchIndex has run. Searches read the files until it is ready. */
+let searchIndex: SessionSearchIndex | null = null;
+let searchIndexStartTimer: ReturnType<typeof setTimeout> | null = null;
+let searchIndexRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+const SEARCH_INDEX_START_DELAY_MS = 20_000;
+/** Keeps the tail a search has to catch up on short. */
+const SEARCH_INDEX_REFRESH_INTERVAL_MS = 120_000;
+
+function listClaudeTranscriptPaths(): string[] {
+  const sessions = normalizeSearchableSessions(sessionsDb.getAllSessions());
+  return [...new Set(sessions.filter((session) => session.provider === 'claude').map((session) => session.jsonl_path))];
+}
+
+/** Indexes every Claude transcript, after which searches use the index. Exported so a test can wait for it. */
+export async function buildSessionSearchIndex(): Promise<void> {
+  const index = searchIndex;
+  if (!index) {
+    return;
+  }
+  const started = Date.now();
+  await index.build(listClaudeTranscriptPaths());
+  const { files, messages, links } = index.stats();
+  console.log(`[search] Transcript index ready: ${files} files, ${messages} messages, ${links} links in ${Math.round((Date.now() - started) / 1000)} s`);
+}
+
+/**
+ * Opens the transcript index beside the database and fills it in the
+ * background. `CLOUDCLI_SEARCH_INDEX=0` leaves searches reading the files.
+ */
+export function initializeSessionSearchIndex({ startDelayMs = SEARCH_INDEX_START_DELAY_MS }: { startDelayMs?: number | null } = {}): void {
+  if (searchIndex || process.env.CLOUDCLI_SEARCH_INDEX === '0') {
+    return;
+  }
+  try {
+    searchIndex = new SessionSearchIndex(
+      path.join(path.dirname(getDatabasePath()), 'search-index.db'),
+      extractClaudeSearchableMessage,
+    );
+  } catch (error) {
+    console.warn('[search] Could not open the transcript index; searches read the files', error);
+    return;
+  }
+  // A test builds the index itself and wants no timers.
+  if (startDelayMs === null) {
+    return;
+  }
+
+  const logFailure = (error: unknown) => console.warn('[search] Transcript index pass failed', error);
+  searchIndexStartTimer = setTimeout(() => {
+    void buildSessionSearchIndex().catch(logFailure);
+  }, startDelayMs);
+  searchIndexStartTimer.unref?.();
+  searchIndexRefreshTimer = setInterval(() => {
+    if (searchIndex?.isReady()) {
+      void searchIndex.refresh(listClaudeTranscriptPaths()).catch(logFailure);
+    }
+  }, SEARCH_INDEX_REFRESH_INTERVAL_MS);
+  searchIndexRefreshTimer.unref?.();
+}
+
+export function closeSessionSearchIndex(): void {
+  if (searchIndexStartTimer) {
+    clearTimeout(searchIndexStartTimer);
+    searchIndexStartTimer = null;
+  }
+  if (searchIndexRefreshTimer) {
+    clearInterval(searchIndexRefreshTimer);
+    searchIndexRefreshTimer = null;
+  }
+  searchIndex?.close();
+  searchIndex = null;
 }
 
 /**

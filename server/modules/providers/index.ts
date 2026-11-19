@@ -18,6 +18,7 @@ export { reapOrphanedOpenCodeServers } from './list/opencode/opencode-runtime.pr
 export { initializeSessionsWatcher } from './services/sessions-watcher.service.js';
 export { closeSessionsWatcher } from './services/sessions-watcher.service.js';
 export { closeSessionTitleWatcher, initializeSessionTitleWatcher } from './services/session-title-watcher.service.js';
+export { closeSessionSearchIndex, initializeSessionSearchIndex } from './services/session-conversations-search.service.js';
 
 // sideQuestionsService: used by the websocket module's `chat.side_question` handler and
 // the provider routes' side-question endpoints. State is in memory; a new

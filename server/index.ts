@@ -12,8 +12,10 @@ import { rateLimit } from 'express-rate-limit';
 
 import { AppError, findApplicationRoot, getModuleDirectory, IS_PLATFORM, terminalTextStyles } from '@/shared/utils.js';
 import {
+    closeSessionSearchIndex,
     closeSessionsWatcher,
     closeSessionTitleWatcher,
+    initializeSessionSearchIndex,
     initializeSessionsWatcher,
     initializeSessionTitleWatcher,
     providerRuntimeService,
@@ -395,6 +397,7 @@ async function startServer() {
             // Start watching the projects folder for changes
             await initializeSessionsWatcher();
             initializeSessionTitleWatcher();
+            initializeSessionSearchIndex();
             // Sends anything that came due while the server was not running,
             // then keeps polling.
             initializeScheduledMessageDispatcher(providerRuntimeService);
@@ -407,6 +410,7 @@ async function startServer() {
 
         await closeSessionsWatcher();
         closeSessionTitleWatcher();
+        closeSessionSearchIndex();
         closeScheduledMessageDispatcher();
         // Clean up plugin processes on shutdown
         const shutdownRuntimeServices = async () => {
