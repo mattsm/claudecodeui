@@ -16,6 +16,7 @@ describe('bench-lock title markers', () => {
     expect(splitBenchLockPrefix('[A3] 🍎 combined perf')).toEqual({ locks: ['A3', 'MAC'], title: 'combined perf' });
     expect(splitBenchLockPrefix('🐧 [A1] wifi test')).toEqual({ locks: ['WIFI1', 'A1'], title: 'wifi test' });
     expect(splitBenchLockPrefix('[A2] 🔒A2 boot loop')).toEqual({ locks: ['A2', 'A2'], title: 'boot loop' });
+    expect(splitBenchLockPrefix('[MW08] 🐧 roam test')).toEqual({ locks: ['MW08', 'WIFI1'], title: 'roam test' });
   });
 
   it('leaves markers that are not at the front, and unknown ones, as text', () => {
@@ -29,5 +30,11 @@ describe('bench-lock title markers', () => {
     expect(screen.getByRole('img', { name: 'Holds the bench A3' }).textContent).toBe('A3');
     expect(screen.getByRole('img', { name: 'Holds the bench Mac mini' })).toBeTruthy();
     expect(screen.getByText('flash test')).toBeTruthy();
+  });
+
+  it('draws the bench MW08 as an access point, like the A-series boards', () => {
+    render(<SessionTitle name="[MW08] roam test" />);
+    expect(screen.getByRole('img', { name: 'Holds the bench MW08' }).textContent).toBe('MW08');
+    expect(screen.getByText('roam test')).toBeTruthy();
   });
 });
