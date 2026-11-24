@@ -32,8 +32,8 @@ test('an "X: ..." chat sits under the "X master ..." chat', () => {
   ]);
 
   assert.deepEqual(describeEntries(entries), [
-    'wireless lab [wireless lab master (mesh lab master)] > map UI | verify Wi-Fi',
     'MASTER',
+    'wireless lab [wireless lab master (mesh lab master)] > map UI | verify Wi-Fi',
     'secure boot (keys)',
   ]);
 });
@@ -65,7 +65,7 @@ test('one "X:" chat without a master, and a master without chats, stay on their 
   ]);
 });
 
-test('a group sits where its most recent chat was, and a second master is listed under the first', () => {
+test('a group sits where its master chat was, and a second master is listed under the first', () => {
   const entries = groupAgentConversations([
     chat('atf'),
     chat('wireless lab: release'),
@@ -76,9 +76,20 @@ test('a group sits where its most recent chat was, and a second master is listed
 
   assert.deepEqual(describeEntries(entries), [
     'atf',
-    'wireless lab [wireless lab master] > release | wireless lab master (old)',
     'decagon',
+    'wireless lab [wireless lab master] > release | wireless lab master (old)',
   ]);
+});
+
+test('a group without a master sits where its most recent chat was', () => {
+  const entries = groupAgentConversations([
+    chat('atf'),
+    chat('virt-wifi: azure'),
+    chat('decagon'),
+    chat('virt-wifi: airplay'),
+  ]);
+
+  assert.deepEqual(describeEntries(entries), ['atf', 'virt-wifi [-] > azure | airplay', 'decagon']);
 });
 
 test('a bench-lock marker is not part of the name, and stays on the label', () => {
@@ -171,12 +182,12 @@ test('pinning a master chat moves its whole group to the top', () => {
 test('pinning a chat inside a group lifts only that chat out, under its full title', () => {
   assert.deepEqual(describePinned(['wireless lab: map UI']), {
     pinned: ['wireless lab: map UI'],
-    entries: ['atf', 'wireless lab [wireless lab master] > release', 'decagon', 'virt-wifi [-] > azure | airplay'],
+    entries: ['atf', 'decagon', 'wireless lab [wireless lab master] > release', 'virt-wifi [-] > azure | airplay'],
   });
   // A group of two without a master does not survive losing one.
   assert.deepEqual(describePinned(['virt-wifi: azure']), {
     pinned: ['virt-wifi: azure'],
-    entries: ['atf', 'wireless lab [wireless lab master] > release | map UI', 'decagon', 'virt-wifi: airplay'],
+    entries: ['atf', 'decagon', 'wireless lab [wireless lab master] > release | map UI', 'virt-wifi: airplay'],
   });
 });
 

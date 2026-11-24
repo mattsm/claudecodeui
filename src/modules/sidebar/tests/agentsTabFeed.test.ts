@@ -10,7 +10,8 @@ import type { Project, RecentConversationListItem } from '@/shared/types';
  * The Agents tab is the sidebar's default and reads the same recent-chats feed
  * as the Conversations tab, at the largest page the server allows. The search
  * box filters what is loaded, so typing must not refetch the feed. It also
- * starts the transcript search, for chats whose title does not say it.
+ * starts the transcript search, for chats whose title does not say it. The
+ * feed is in order of last activity, so it is fetched again while it shows.
  */
 
 const feedRequests: { limit?: number; offset?: number }[] = [];
@@ -146,7 +147,7 @@ test('a chat started while the feed is empty shows up', async () => {
   });
 });
 
-test('a running chat the feed does not hold reloads it once', async () => {
+test('a chat that starts or stops running refreshes the feed once', async () => {
   const { result, rerender } = renderController(['a']);
   await waitFor(() => {
     assert.equal(result.current.recentConversations.length, 2);
@@ -160,11 +161,45 @@ test('a running chat the feed does not hold reloads it once', async () => {
     assert.equal(result.current.recentConversations.length, 3);
   });
   assert.equal(feedRequests.length, 2);
+  assert.equal(result.current.isRecentConversationsLoading, false);
 
-  // A running session the feed never lists is asked about once, not on every render.
-  rerender({ activeSessions: ['a', 'new', 'hidden'] });
+  // The same chats running on a later render is no change.
+  rerender({ activeSessions: ['new', 'a'] });
   await settle();
-  rerender({ activeSessions: ['a', 'new', 'hidden'] });
-  await settle();
+  assert.equal(feedRequests.length, 2);
+
+  // "a" was the last to work, so the server lists it first now.
+  feed = [conversation('a'), conversation('new'), conversation('b')];
+  rerender({ activeSessions: ['new'] });
+  await waitFor(() => {
+    assert.deepEqual(result.current.recentConversations.map((row) => row.sessionId), ['a', 'new', 'b']);
+  });
   assert.equal(feedRequests.length, 3);
+});
+
+test('the feed is fetched again on a timer while the page is in view, and keeps the rows when nothing changed', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const { result } = renderController();
+    await waitFor(() => {
+      assert.equal(result.current.recentConversations.length, 2);
+    });
+    const rows = result.current.recentConversations;
+
+    await act(() => vi.advanceTimersByTimeAsync(20_000));
+    assert.equal(feedRequests.length, 2);
+    assert.equal(result.current.recentConversations, rows);
+
+    feed = [conversation('b'), conversation('a')];
+    await act(() => vi.advanceTimersByTimeAsync(20_000));
+    assert.deepEqual(result.current.recentConversations.map((row) => row.sessionId), ['b', 'a']);
+
+    // A hidden page does not ask.
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(() => vi.advanceTimersByTimeAsync(20_000));
+    assert.equal(feedRequests.length, 3);
+    visibility.mockRestore();
+  } finally {
+    vi.useRealTimers();
+  }
 });

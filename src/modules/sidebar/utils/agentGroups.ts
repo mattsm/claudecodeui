@@ -46,7 +46,8 @@ function readTitleRole(title: string): TitleRole {
 
 /**
  * Groups the recent-chats feed for the Agents tab. Entries keep the feed's
- * order: a group sits where its most recent chat was.
+ * order. A group sits where its master chat was, so busy chats under a quiet
+ * master do not lift it. Without a master it sits where its most recent chat was.
  */
 export function groupAgentConversations(conversations: RecentConversationListItem[]): AgentEntry[] {
   const parsed = conversations.map((conversation) => {
@@ -92,15 +93,19 @@ export function groupAgentConversations(conversations: RecentConversationListIte
       continue;
     }
 
+    const master = masterByKey.get(role.key);
     let group = groupByKey.get(role.key);
     if (!group) {
       group = { kind: 'group', key: role.key, name: nameByKey.get(role.key) ?? role.name, master: null, members: [] };
       groupByKey.set(role.key, group);
-      entries.push(group);
+      if (!master) {
+        entries.push(group);
+      }
     }
 
-    if (masterByKey.get(role.key) === conversation) {
+    if (master === conversation) {
       group.master = { conversation, label: conversation.sessionTitle };
+      entries.push(group);
     } else {
       const rest = role.role === 'member' ? role.rest : '';
       group.members.push({ conversation, label: rest ? `${markers}${rest}` : conversation.sessionTitle });

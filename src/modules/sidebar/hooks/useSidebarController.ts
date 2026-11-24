@@ -55,6 +55,34 @@ type RecentConversationsApiPayload = {
   };
 };
 
+const RECENT_FEED_REFRESH_MS = 20_000;
+// The server stamps a chat's activity a moment after its turn starts or ends.
+const RUNNING_CHANGE_REFRESH_DELAY_MS = 400;
+
+/**
+ * Puts a freshly fetched first page in front of the rows loaded after it.
+ * Returns `previous` itself when nothing a row shows has changed.
+ */
+function mergeRefreshedFeed(
+  previous: RecentConversationListItem[],
+  firstPage: RecentConversationListItem[],
+): RecentConversationListItem[] {
+  const refreshedIds = new Set(firstPage.map((conversation) => conversation.sessionId));
+  const next = [
+    ...firstPage,
+    ...previous.slice(firstPage.length).filter((conversation) => !refreshedIds.has(conversation.sessionId)),
+  ];
+  const unchanged = next.length === previous.length && next.every((conversation, index) => {
+    const before = previous[index];
+    return before.sessionId === conversation.sessionId
+      && before.lastActivity === conversation.lastActivity
+      && before.sessionTitle === conversation.sessionTitle
+      && before.projectId === conversation.projectId
+      && before.projectDisplayName === conversation.projectDisplayName;
+  });
+  return unchanged ? previous : next;
+}
+
 type UseSidebarControllerArgs = {
   projects: Project[];
   selectedProject: Project | null;
@@ -185,6 +213,8 @@ export function useSidebarController({
   const searchSeqRef = useRef(0);
   const recentConversationsSeqRef = useRef(0);
   const recentConversationsLoadedRef = useRef(false);
+  const recentConversationsInFlightRef = useRef(0);
+  const recentConversationsCountRef = useRef(0);
   const archivedSessionsSeqRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
   const starToggleSequenceByProjectRef = useRef<Map<string, number>>(new Map());
@@ -305,6 +335,7 @@ export function useSidebarController({
 
   const fetchRecentConversationsPage = useCallback(async (offset: number, append: boolean) => {
     const requestSequence = ++recentConversationsSeqRef.current;
+    recentConversationsInFlightRef.current += 1;
     if (append) {
       setIsLoadingMoreRecentConversations(true);
     } else {
@@ -348,10 +379,40 @@ export function useSidebarController({
       console.error('[Sidebar] Failed to load recent conversations:', error);
       setRecentConversationsError(true);
     } finally {
+      recentConversationsInFlightRef.current -= 1;
       if (requestSequence === recentConversationsSeqRef.current) {
         setIsRecentConversationsLoading(false);
         setIsLoadingMoreRecentConversations(false);
       }
+    }
+  }, [recentConversationsPageSize]);
+
+  // Fetches the first page again without the loading state, and keeps the
+  // pages loaded after it. It gives way to any other load of the feed.
+  const refreshRecentConversations = useCallback(async () => {
+    if (!recentConversationsLoadedRef.current || recentConversationsInFlightRef.current > 0) {
+      return;
+    }
+    const sequenceAtStart = recentConversationsSeqRef.current;
+
+    try {
+      const response = await api.recentConversations({ limit: recentConversationsPageSize, offset: 0 });
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as RecentConversationsApiPayload;
+      if (sequenceAtStart !== recentConversationsSeqRef.current || recentConversationsInFlightRef.current > 0) {
+        return;
+      }
+
+      const firstPage = Array.isArray(payload.data?.conversations) ? payload.data.conversations : [];
+      if (recentConversationsCountRef.current <= recentConversationsPageSize) {
+        setRecentConversationsHasMore(Boolean(payload.data?.hasMore));
+      }
+      setRecentConversationsTotal(Number(payload.data?.total ?? firstPage.length));
+      setRecentConversations((previous) => mergeRefreshedFeed(previous, firstPage));
+    } catch {
+      // The next refresh tries again.
     }
   }, [recentConversationsPageSize]);
 
@@ -414,27 +475,37 @@ export function useSidebarController({
     }
   }, [reloadRecentConversations, showsRecentConversations]);
 
-  // The feed is fetched when the tab opens, so a chat started since then is
-  // not in it. A running chat the list does not hold reloads it, once per chat:
-  // some running sessions never appear in the feed.
-  const feedReloadedForSessionIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (searchMode !== 'agents' || isRecentConversationsLoading || !recentConversationsLoadedRef.current) {
-      return;
+  // The feed is in order of last activity, and that order moves while the
+  // list shows. It is fetched again on a timer, when the page comes back into
+  // view, and shortly after a chat starts or stops running.
+  recentConversationsCountRef.current = recentConversations.length;
+  const refreshShownFeedRef = useRef<() => void>(() => {});
+  refreshShownFeedRef.current = () => {
+    if (showsRecentConversations && document.visibilityState === 'visible') {
+      void refreshRecentConversations();
     }
+  };
 
-    const loadedIds = new Set(recentConversations.map((conversation) => conversation.sessionId));
-    let hasUnlistedChat = false;
-    for (const sessionId of activeSessions) {
-      if (!loadedIds.has(sessionId) && !feedReloadedForSessionIdsRef.current.has(sessionId)) {
-        feedReloadedForSessionIdsRef.current.add(sessionId);
-        hasUnlistedChat = true;
-      }
+  useEffect(() => {
+    const refresh = () => refreshShownFeedRef.current();
+    const timer = setInterval(refresh, RECENT_FEED_REFRESH_MS);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+
+  const runningSessionsKey = useMemo(() => [...activeSessions].sort().join(' '), [activeSessions]);
+  const refreshedForRunningKeyRef = useRef(runningSessionsKey);
+  useEffect(() => {
+    if (refreshedForRunningKeyRef.current === runningSessionsKey) {
+      return undefined;
     }
-    if (hasUnlistedChat) {
-      reloadRecentConversations();
-    }
-  }, [activeSessions, isRecentConversationsLoading, recentConversations, reloadRecentConversations, searchMode]);
+    refreshedForRunningKeyRef.current = runningSessionsKey;
+    const timer = setTimeout(() => refreshShownFeedRef.current(), RUNNING_CHANGE_REFRESH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [runningSessionsKey]);
 
   // The Conversations list is only fetched when its tab opens, while `projects`
   // is patched the moment a session is renamed from the workspace header. Fold

@@ -281,7 +281,7 @@ test('the menu pins a chat to the top and unpins it again', () => {
   assert.deepEqual(preferenceStore.values.agentsPinnedSessions, ['id:decagon']);
 
   fireEvent.click(screen.getByRole('button', { name: 'unpin id:decagon' }));
-  assert.deepEqual(rowTitles(document.body).slice(0, 2), ['wireless lab master', 'wireless lab: map UI']);
+  assert.deepEqual(rowTitles(document.body).slice(0, 2), ['decagon', 'wireless lab master']);
   assert.deepEqual(preferenceStore.values.agentsPinnedSessions, []);
 });
 
@@ -291,7 +291,7 @@ test('a pinned chat inside a group is listed on its own at the top', () => {
 
   assert.deepEqual(rowTitles(document.body), [
     'wireless lab: release', 'virt-wifi: airplay',
-    'wireless lab master', 'wireless lab: map UI', 'decagon', 'virt-wifi: azure',
+    'decagon', 'wireless lab master', 'wireless lab: map UI', 'virt-wifi: azure',
   ]);
   // Lifted out, the chat shows its full title.
   assert.ok(screen.getByText('wireless lab: release'));
