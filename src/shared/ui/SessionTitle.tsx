@@ -5,12 +5,12 @@ import { cn } from '@/shared/utils';
 /**
  * Bench-lock markers at the front of a chat title. `~/bin/board-lock-title.mjs`
  * prefixes the title of the chat holding a bench resource with "[A3] ",
- * "[A1] ", "[A2] ", "[MW08] ", "🍎 " (Mac mini) or "🐧 " (goliath Wi-Fi client), or the older
+ * "[A1] ", "[A2] ", "[MW08] ", "[STA] " (station generator), "🍎 " (Mac mini) or "🐧 " (goliath Wi-Fi client), or the older
  * "🔒A3 "-style markers; the sidebar draws them as icons.
  */
-export type BenchLock = 'A1' | 'A2' | 'A3' | 'MW08' | 'MAC' | 'WIFI1';
+export type BenchLock = 'A1' | 'A2' | 'A3' | 'MW08' | 'MAC' | 'WIFI1' | 'STA';
 
-const MARKER = /^(?:🔒(A1|A2|A3|MW08|MAC|WIFI1)|\[(A1|A2|A3|MW08)\]|(🍎)|(🐧)) /u;
+const MARKER = /^(?:🔒(A1|A2|A3|MW08|MAC|WIFI1)|\[(A1|A2|A3|MW08|STA)\]|(🍎)|(🐧)) /u;
 const EMOJI_LOCKS: Record<string, BenchLock> = { '🍎': 'MAC', '🐧': 'WIFI1' };
 
 export function splitBenchLockPrefix(name: string): { locks: BenchLock[]; title: string } {
@@ -30,6 +30,7 @@ const LOCK_LABELS: Record<BenchLock, string> = {
   MW08: 'Holds the bench MW08',
   MAC: 'Holds the bench Mac mini',
   WIFI1: 'Holds the goliath Wi-Fi client',
+  STA: 'Holds the station generator',
 };
 
 /** A Meter access point: a white rounded square with the model in bold and a status light. */
@@ -59,12 +60,26 @@ function MacMiniIcon() {
   );
 }
 
+/** The station generator: one radio that stands in for many Wi-Fi clients, so a row of stations under one signal. */
+function StationGeneratorIcon() {
+  return (
+    <svg viewBox="0 0 22 14" className="h-3.5 w-[22px] text-violet-600 dark:text-violet-400" aria-hidden>
+      <path d="M6.5 5.2a6.4 6.4 0 0 1 9 0M8.6 7.3a3.4 3.4 0 0 1 4.8 0" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      {[3, 9, 15].map((x) => (
+        <rect key={x} x={x} y="9.2" width="4" height="4" rx="1" fill="currentColor" />
+      ))}
+    </svg>
+  );
+}
+
 /** One bench-lock marker as an icon. Exported for lists that show a lock away from its title. */
 export function LockIcon({ lock }: { lock: BenchLock }) {
   const icon = lock === 'MAC'
     ? <MacMiniIcon />
     : lock === 'WIFI1'
       ? <WifiIcon className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden />
+      : lock === 'STA'
+        ? <StationGeneratorIcon />
       : <AccessPointIcon model={lock} />;
   return (
     <span role="img" aria-label={LOCK_LABELS[lock]} title={LOCK_LABELS[lock]} className="inline-flex flex-shrink-0 items-center">

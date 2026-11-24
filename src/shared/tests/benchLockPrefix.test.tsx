@@ -32,6 +32,13 @@ describe('bench-lock title markers', () => {
     expect(screen.getByText('flash test')).toBeTruthy();
   });
 
+  it('reads the station generator marker and draws its icon', () => {
+    expect(splitBenchLockPrefix('[STA] [MW08] station comparison')).toEqual({ locks: ['STA', 'MW08'], title: 'station comparison' });
+    render(<SessionTitle name="[STA] queuing: station comparison" />);
+    expect(screen.getByRole('img', { name: 'Holds the station generator' }).querySelector('svg')).toBeTruthy();
+    expect(screen.getByText('queuing: station comparison')).toBeTruthy();
+  });
+
   it('draws the bench MW08 as an access point, like the A-series boards', () => {
     render(<SessionTitle name="[MW08] roam test" />);
     expect(screen.getByRole('img', { name: 'Holds the bench MW08' }).textContent).toBe('MW08');
