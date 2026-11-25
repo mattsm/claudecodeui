@@ -82,7 +82,7 @@ function extractCodexTokenBudget(event: AnyRecord) {
  * @param {object} event - SDK event
  * @returns {object} - Transformed event for WebSocket
  */
-function transformCodexEvent(event: AnyRecord): AnyRecord {
+export function transformCodexEvent(event: AnyRecord): AnyRecord {
   // Map SDK event types to a consistent format
   switch (event.type) {
     case 'item.started':

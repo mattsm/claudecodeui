@@ -610,3 +610,24 @@ test('Codex history restores user prompts from typed item_completed rows', { con
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('live Codex reasoning is a thinking row, and reasoning with no text is dropped', async () => {
+  const { transformCodexEvent } = await import('@/modules/providers/list/codex/codex-runtime.provider.js');
+  const provider = new CodexSessionsProvider();
+  const live = (item: Record<string, unknown>) => provider.normalizeMessage(
+    transformCodexEvent({ type: 'item.completed', item }),
+    'session-1',
+  );
+
+  const [thinking] = live({ id: 'item_1', type: 'reasoning', text: 'Need inspect. Check files.' });
+  assert.equal(thinking?.kind, 'thinking');
+  assert.equal(thinking?.content, 'Need inspect. Check files.');
+  assert.equal(thinking?.role, undefined);
+
+  // Models that keep their reasoning to themselves send the item with no text.
+  assert.deepEqual(live({ id: 'item_2', type: 'reasoning', text: '' }), []);
+
+  const [reply] = live({ id: 'item_3', type: 'agent_message', text: 'The fix is applied.' });
+  assert.equal(reply?.kind, 'text');
+  assert.equal(reply?.role, 'assistant');
+});
