@@ -780,6 +780,8 @@ export function useProjectsState({
         && event.kind !== 'session_upserted'
         // A change to the session's scheduled messages is not new activity in it.
         && event.kind !== 'scheduled_messages_changed'
+        // The sidebar row shows its own count of open questions.
+        && event.kind !== 'agent_asks_changed'
         && event.kind !== 'session_archive_changed'
         && event.kind !== 'status'
         && event.kind !== 'stream_end'

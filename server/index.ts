@@ -54,6 +54,7 @@ import {
     scheduledMessagesRoutes,
 } from './modules/scheduled-messages/index.js';
 import browserUseRoutes from './modules/browser-use/browser-use.routes.js';
+import { agentAsksMcpRoutes, agentAsksRoutes, agentAsksService } from './modules/agent-asks/index.js';
 import { assetsRoutes } from './modules/assets/index.js';
 import { fileTreeRoutes } from './modules/file-tree/index.js';
 import { worktreesRoutes } from './modules/worktrees/index.js';
@@ -212,6 +213,10 @@ app.use('/api/browser-use', authenticateToken, browserUseRoutes);
 // Unified provider MCP routes (protected)
 app.use('/api/providers', authenticateToken, providerRoutes);
 app.use('/api/scheduled-messages', authenticateToken, scheduledMessagesRoutes);
+
+// Agent questions and acknowledgements: the panel (protected) and the agent tools (local token protected)
+app.use('/api/agent-asks', authenticateToken, agentAsksRoutes);
+app.use('/api/agent-asks-mcp', agentAsksMcpRoutes);
 
 // Agent API Routes (uses API key authentication)
 app.use('/api/agent', agentRoutes);
@@ -401,6 +406,11 @@ async function startServer() {
             // Sends anything that came due while the server was not running,
             // then keeps polling.
             initializeScheduledMessageDispatcher(providerRuntimeService);
+
+            // The tool script's path changes with the release, so this runs at every start.
+            void agentAsksService.registerAgentMcp().catch((error) => {
+                console.warn('[WARN] Could not register the agent question tools:', getErrorMessage(error));
+            });
 
             // Start server-side plugin processes for enabled plugins
             startEnabledPluginServers().catch(err => {

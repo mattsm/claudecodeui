@@ -312,6 +312,15 @@ export const api = {
     cancel: (id: string) => del(`/api/scheduled-messages/${encodeURIComponent(id)}`),
   },
 
+  // Questions and acknowledgement requests agents record for the user.
+  // Without a session id: the open items of every chat.
+  agentAsks: {
+    list: (sessionId?: string) =>
+      get(`/api/agent-asks${sessionId ? query({ sessionId }) : ''}`),
+    resolve: (id: number, body: { action: 'answer' | 'ack' | 'dismiss'; answer?: string }) =>
+      post(`/api/agent-asks/${id}/resolve`, body),
+  },
+
   // Workspace file tree
   readFile: (projectId: string, filePath: string, allowOutside = false) =>
     get(`/api/file-tree/projects/${projectId}/file${query(allowOutside ? { filePath, allowOutside: '1' } : { filePath })}`),

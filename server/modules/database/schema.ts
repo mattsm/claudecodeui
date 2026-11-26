@@ -122,6 +122,38 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
 );
 `;
 
+/**
+ * Questions an agent has for the user, and things it needs the user to
+ * acknowledge, shown in the panel beside the chat.
+ *
+ * `session_id` has no foreign key and can be NULL: an agent can ask before the
+ * app has indexed its session, or from a provider whose tool process is not
+ * told which chat it serves. `provider_session_id` and `chat_label` keep what
+ * the agent said about itself, so the row can be matched to a session later.
+ */
+export const AGENT_ASKS_TABLE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS agent_asks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    provider_session_id TEXT,
+    chat_label TEXT,
+    project_path TEXT,
+    -- question | ack
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    details TEXT,
+    -- JSON array of answers the agent suggests.
+    options TEXT NOT NULL DEFAULT '[]',
+    -- open | answered | acked | dismissed | withdrawn
+    status TEXT NOT NULL DEFAULT 'open',
+    -- The user's answer or note; for a withdrawn item, the agent's reason.
+    answer TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME
+);
+`;
+
 export const SESSIONS_TABLE_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT NOT NULL,

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, type Dispatch, type SetStateAction, useState } from 'react';
 
+import { AgentAsksPanel, useAgentAsksPanel } from '@/modules/agent-asks';
 import { ChatInterface } from '@/modules/chat';
 import { FileTree } from '@/modules/file-tree';
 import { StandaloneShell } from '@/modules/standalone-shell';
@@ -69,6 +70,10 @@ function WorkspaceMain({
   // The folder an in-chat `path/` reference asked to reveal. Held as an object
   // so that re-clicking the same folder is a new request the tree acts on.
   const [revealDirectory, setRevealDirectory] = useState<DirectoryRevealRequest | null>(null);
+
+  // What the open chat's agent waits on the user for, shown in a panel beside the chat.
+  const agentAsksPanel = useAgentAsksPanel(selectedSession?.id ?? null, isMobile);
+  const showAgentAsksPanel = agentAsksPanel.isVisible && activeTab === 'chat' && Boolean(selectedSession);
 
   const shouldShowTasksTab = Boolean(tasksEnabled && isTaskMasterInstalled);
   const shouldShowBrowserTab = browserUseEnabled;
@@ -153,9 +158,10 @@ function WorkspaceMain({
         isMobile={isMobile}
         onMenuClick={onMenuClick}
         onRenameSession={onRenameSession}
+        agentAsks={selectedSession && activeTab === 'chat' ? agentAsksPanel : null}
       />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <div className={`flex min-h-0 min-w-[200px] flex-col overflow-hidden ${editorExpanded ? 'hidden' : ''} flex-1`}>
           <div className={`h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
             <WorkspaceErrorBoundary showDetails>
@@ -230,6 +236,15 @@ function WorkspaceMain({
             </div>
           )}
         </div>
+
+        {showAgentAsksPanel && selectedSession && !editorExpanded && (
+          <AgentAsksPanel
+            sessionId={selectedSession.id}
+            isMobile={isMobile}
+            onClose={agentAsksPanel.toggle}
+            onNavigateToSession={onNavigateToSession}
+          />
+        )}
 
         <EditorSidebar
           editingFile={editingFile}

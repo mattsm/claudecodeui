@@ -116,6 +116,11 @@ type SubmitOptions = {
    * Falls through to the ordinary send when no turn is running any more.
    */
   steerIntoTurn?: boolean;
+  /**
+   * The message did not come from the composer (`sendTextMessage`): the text,
+   * draft and edit in progress there are left as they are.
+   */
+  keepComposerInput?: boolean;
 };
 
 const createFakeSubmitEvent = () => {
@@ -1185,6 +1190,11 @@ export function useChatComposerState({
         // queued submission. Put the same durable draft back without uploading
         // its files again.
         if (queuedSubmission) {
+          // A message from outside the composer was never stored: queue it for real.
+          if (submitOptions?.keepComposerInput) {
+            await queueMessage(queuedSubmission, sessionKey, { fromComposer: false });
+            return;
+          }
           queuedDraftSessionRef.current = sessionKey;
           setQueuedDraft(queuedSubmission);
           return;
@@ -1361,6 +1371,10 @@ export function useChatComposerState({
         }
         if (choice === 'queue') {
           if (queuedSubmission) {
+            if (submitOptions?.keepComposerInput) {
+              await queueMessage(queuedSubmission, targetSessionId, { fromComposer: false });
+              return;
+            }
             queuedDraftSessionRef.current = sessionKey;
             setQueuedDraft(queuedSubmission);
             return;
@@ -1376,6 +1390,8 @@ export function useChatComposerState({
         }
       }
 
+      // An edit in progress belongs to the composer's text, not to a message sent from outside it.
+      const sendAnchorId = submitOptions?.keepComposerInput ? null : editingAnchorId;
       const attachmentRecords = uploadedAttachments as ChatAttachment[];
       const userMessage: ChatMessage = {
         type: 'user',
@@ -1386,7 +1402,7 @@ export function useChatComposerState({
         // Tags this echo as the replacement, so the truncation the server
         // broadcasts a moment later cuts the turns being replaced without
         // taking the message the user just sent with them.
-        ...(editingAnchorId ? { replacesAnchorId: editingAnchorId } : {}),
+        ...(sendAnchorId ? { replacesAnchorId: sendAnchorId } : {}),
       };
 
       addMessage(userMessage);
@@ -1408,9 +1424,9 @@ export function useChatComposerState({
         // Replacing an already-sent message is its own frame: it changes the
         // shape of the conversation, so it gets validated separately and can
         // report why it was refused.
-        type: editingAnchorId ? 'chat.edit-send' : 'chat.send',
+        type: sendAnchorId ? 'chat.edit-send' : 'chat.send',
         sessionId: targetSessionId,
-        ...(editingAnchorId ? { anchorId: editingAnchorId } : {}),
+        ...(sendAnchorId ? { anchorId: sendAnchorId } : {}),
         content: messageContent,
         options: {
           ...(queuedSubmission?.options ?? buildSendOptions(messageContent)),
@@ -1418,13 +1434,18 @@ export function useChatComposerState({
         },
       });
       // Only this send's edit: an edit begun in another chat during the upload stays.
-      setEditingAnchorId((current) => (current === editingAnchorId ? null : current));
+      if (sendAnchorId) {
+        setEditingAnchorId((current) => (current === sendAnchorId ? null : current));
+      }
 
       // Recorded under the (possibly just-allocated) session id, so the first
       // message of a new chat lands in the history of the session the user is
       // navigated to. Queued drafts were recorded when they were queued; the
       // consecutive-duplicate check keeps this second call a no-op.
       recordSentMessage(currentInput, targetSessionId);
+      if (submitOptions?.keepComposerInput) {
+        return;
+      }
       // Attachments are not kept per chat, so only the ones just sent go.
       setAttachedFiles((files) => files.filter((file) => !currentAttachments.includes(file)));
       // A brand-new chat moves from its project scope to its allocated session id meanwhile.
@@ -1505,6 +1526,35 @@ export function useChatComposerState({
       }
     },
     [submitMessage],
+  );
+
+  // Sends text that did not come from the composer as a message of its own:
+  // the questions panel's answers. Behind a running turn or background work it
+  // is queued, as Enter does, and the composer's own text is left alone.
+  // `submitMessage` rather than `handleSubmit`: the double-submit guard is for
+  // the composer's text, and would drop this message without saying so.
+  const sendTextMessage = useCallback(
+    async (text: string) => {
+      const content = text.trim();
+      if (!content || !sessionKey) {
+        return;
+      }
+      const message: QueuedDraft = {
+        content,
+        attachments: [],
+        uploadedAttachments: [],
+        options: buildSendOptions(content),
+      };
+      if (isLoading || processingSessionsRef.current?.get(sessionKey)?.background) {
+        await queueMessage(message, sessionKey, { fromComposer: false });
+        return;
+      }
+      await submitMessage(createFakeSubmitEvent(), message, {
+        skipCommandInterception: true,
+        keepComposerInput: true,
+      });
+    },
+    [buildSendOptions, isLoading, queueMessage, sessionKey, submitMessage],
   );
 
   // The send menu's entry point: side question never becomes a turn, so it never goes
@@ -1916,6 +1966,7 @@ export function useChatComposerState({
     isDragActive,
     openAttachmentPicker: open,
     handleSubmit,
+    sendTextMessage,
     handleSendMenuChoice,
     backgroundSendPrompt,
     resolveBackgroundSendPrompt,

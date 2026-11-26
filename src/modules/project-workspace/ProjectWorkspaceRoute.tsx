@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { AgentAsksProvider } from '@/modules/agent-asks';
 import { PaletteOpsProvider } from '@/modules/command-palette';
 import { ProjectsStateProvider } from '@/modules/project-workspace/context/ProjectsStateContext';
 import {
@@ -42,12 +43,14 @@ function ProjectWorkspaceRouteContent() {
       isMobile={isMobile}
       isSessionProcessing={isSessionProcessing}
     >
-      <ProjectWorkspaceShell
-        isMobile={isMobile}
-        ws={ws}
-        sendMessage={sendMessage}
-        navigate={navigate}
-      />
+      <AgentAsksProvider subscribe={subscribe}>
+        <ProjectWorkspaceShell
+          isMobile={isMobile}
+          ws={ws}
+          sendMessage={sendMessage}
+          navigate={navigate}
+        />
+      </AgentAsksProvider>
     </ProjectsStateProvider>
   );
 }

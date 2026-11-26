@@ -261,6 +261,10 @@ export function useChatRealtimeHandlers({
         // Owned by useScheduledMessages, which reads the composer banner's
         // list again. Not a transcript row.
         case 'scheduled_messages_changed':
+        // Owned by the agent-asks module, which reads its lists again. Not a
+        // transcript row either: stored as one, it has no id and the store's
+        // readers fail on it.
+        case 'agent_asks_changed':
           return;
 
         default:

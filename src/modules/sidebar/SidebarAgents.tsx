@@ -12,6 +12,7 @@ import { agentEntryRows, filterAgentEntries, pinAgentConversations } from '@/mod
 import { usePinnedAgents } from '@/modules/sidebar/hooks/usePinnedAgents';
 import type { AgentRow } from '@/modules/sidebar/utils/agentGroups';
 import SessionOptions from '@/modules/sidebar/SessionOptions';
+import { AgentAskCountBadge } from '@/modules/agent-asks';
 
 const COLLAPSED_GROUPS_STORAGE_KEY = 'sidebar-agents-collapsed-groups';
 
@@ -66,11 +67,13 @@ type AgentChatRowProps = Pick<SidebarAgentsProps, 'selectedSession' | 'currentTi
   row: AgentRow;
   /** Drawn after the title in place of the age; the group header puts its running count here. */
   badge?: ReactNode;
+  /** The chats whose open questions the row counts; a folded group's header counts its hidden chats too. Defaults to the row's own chat. */
+  askSessionIds?: readonly string[];
   pinnedIds: ReadonlySet<string>;
   onTogglePin: (sessionId: string) => void;
 };
 
-function AgentChatRow({ row, badge, pinnedIds, onTogglePin, selectedSession, currentTime, sessionActions, onConversationSelect, t }: AgentChatRowProps) {
+function AgentChatRow({ row, badge, askSessionIds, pinnedIds, onTogglePin, selectedSession, currentTime, sessionActions, onConversationSelect, t }: AgentChatRowProps) {
   const { conversation, label } = row;
   const isPinned = pinnedIds.has(conversation.sessionId);
   const isSelected = String(selectedSession?.id ?? '') === conversation.sessionId;
@@ -113,6 +116,7 @@ function AgentChatRow({ row, badge, pinnedIds, onTogglePin, selectedSession, cur
             className="h-3 w-3 flex-shrink-0 text-muted-foreground"
           />
         )}
+        <AgentAskCountBadge sessionIds={askSessionIds ?? [conversation.sessionId]} />
         {badge}
         {needsAttention ? (
           <Tooltip content={t('tooltips.attentionRequiredIndicator', { defaultValue: 'Session needs attention' })} position="top">
@@ -410,8 +414,11 @@ function AgentsList({
             ? []
             : entry.members.flatMap((row) => splitBenchLockPrefix(row.conversation.sessionTitle).locks
               .map((lock) => ({ lock, sessionId: row.conversation.sessionId, title: row.label })));
+          // A collapsed group also hides the chats that wait on the user, so the header counts their questions.
+          const hiddenAskSessionIds = isOpen ? [] : entry.members.map((row) => row.conversation.sessionId);
           const runningBadge = (
             <>
+            {!entry.master && <AgentAskCountBadge sessionIds={hiddenAskSessionIds} />}
             {hiddenLocks.map(({ lock, sessionId, title }) => (
               <span key={`${sessionId}:${lock}`} title={title} data-testid="agent-group-lock" className="inline-flex flex-shrink-0 items-center">
                 <LockIcon lock={lock} />
@@ -447,7 +454,12 @@ function AgentsList({
                   <span aria-hidden className={cn('inline-block transition-transform', isOpen && 'rotate-90')}>▸</span>
                 </button>
                 {entry.master ? (
-                  <AgentChatRow row={entry.master} badge={runningBadge} {...rowProps} />
+                  <AgentChatRow
+                    row={entry.master}
+                    badge={runningBadge}
+                    askSessionIds={[entry.master.conversation.sessionId, ...hiddenAskSessionIds]}
+                    {...rowProps}
+                  />
                 ) : (
                   <button
                     type="button"

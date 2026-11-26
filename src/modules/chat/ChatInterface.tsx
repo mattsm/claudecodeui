@@ -263,6 +263,7 @@ function ChatInterface({
     isDragActive,
     openAttachmentPicker,
     handleSubmit,
+    sendTextMessage,
     handleSendMenuChoice,
     backgroundSendPrompt,
     resolveBackgroundSendPrompt,
@@ -379,7 +380,7 @@ function ChatInterface({
     });
   }, [setInput, textareaRef]);
 
-  usePaletteOpsRegister({ insertComposerText });
+  usePaletteOpsRegister({ insertComposerText, sendChatMessage: sendTextMessage });
 
   // The server stops the work and ends the process; the stopped tasks may
   // never report back, so the session is shown idle right away.

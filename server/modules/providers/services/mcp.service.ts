@@ -82,6 +82,42 @@ export const providerMcpService = {
   },
 
   /**
+   * Makes one user-scope stdio MCP server match the given definition in every
+   * provider, writing only the provider configurations that differ.
+   *
+   * For a server the app registers at each start: the provider configuration
+   * files are shared with running CLIs, so an unchanged entry is not rewritten.
+   */
+  async syncMcpServerToAllProviders(
+    input: { name: string; command: string; args: string[]; env: Record<string, string> },
+  ): Promise<Array<{ provider: LLMProvider; changed: boolean; error?: string }>> {
+    const results: Array<{ provider: LLMProvider; changed: boolean; error?: string }> = [];
+    for (const provider of providerRegistry.listProviders()) {
+      try {
+        const existing = (await provider.mcp.listServersForScope('user'))
+          .find((server) => server.name === input.name);
+        const unchanged = existing !== undefined
+          && existing.transport === 'stdio'
+          && existing.command === input.command
+          && JSON.stringify(existing.args ?? []) === JSON.stringify(input.args)
+          && Object.entries(input.env).every(([key, value]) => existing.env?.[key] === value);
+        if (!unchanged) {
+          await provider.mcp.upsertServer({ ...input, scope: 'user', transport: 'stdio' });
+        }
+        results.push({ provider: provider.id, changed: !unchanged });
+      } catch (error) {
+        results.push({
+          provider: provider.id,
+          changed: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    return results;
+  },
+
+  /**
    * Removes one MCP server from every provider. Mirrors `addMcpServerToAllProviders`
    * by iterating the live provider registry, so callers stay in sync with which
    * providers exist instead of maintaining their own provider list.

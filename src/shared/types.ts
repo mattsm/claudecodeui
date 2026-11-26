@@ -503,6 +503,33 @@ type QuestionOption = {
 
 // ---------------------------
 
+//----------------- AGENT QUESTIONS AND ACKNOWLEDGEMENTS ------------
+
+/** A question an agent has for the user, or something it needs the user to acknowledge; listed in the panel beside the chat. */
+export type AgentAsk = {
+  /** Also the number the agent and the user refer to the item by ("#12"). */
+  id: number;
+  /** The chat the item belongs to; null until the server has matched it to one. */
+  sessionId: string | null;
+  kind: 'question' | 'ack';
+  title: string;
+  /** Markdown context from the agent. */
+  details: string | null;
+  /** Answers the agent suggests, offered as buttons. */
+  options: string[];
+  status: 'open' | 'answered' | 'acked' | 'dismissed' | 'withdrawn';
+  /** The user's answer or note; for a withdrawn item, the agent's reason. */
+  answer: string | null;
+  /** ISO instant. */
+  createdAt: string;
+  resolvedAt: string | null;
+};
+
+/** An open AgentAsk with its chat's title, from the list that spans every chat. */
+export type OpenAgentAsk = AgentAsk & { sessionTitle: string | null };
+
+// ---------------------------
+
 //----------------- SIDE QUESTIONS ------------
 
 /** Where a side question stands: `running` while the fork is still answering, `done` once it finished, `error` if the fork failed or the question was refused. */

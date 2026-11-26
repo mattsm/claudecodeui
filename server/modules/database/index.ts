@@ -1,5 +1,13 @@
 export { initializeDatabase } from '@/modules/database/init-db.js';
 export { closeConnection, getConnection, getDatabasePath } from '@/modules/database/connection.js';
+// agentAsksDb: used by the Agent Asks module to store the questions and acknowledgements agents record for the user.
+export { agentAsksDb } from '@/modules/database/repositories/agent-asks.db.js';
+export type {
+  AgentAskKind,
+  AgentAskRow,
+  AgentAskStatus,
+  OpenAgentAskRow,
+} from '@/modules/database/repositories/agent-asks.db.js';
 export { apiKeysDb } from '@/modules/database/repositories/api-keys.js';
 export { appConfigDb } from '@/modules/database/repositories/app-config.js';
 export { credentialsDb } from '@/modules/database/repositories/credentials.js';

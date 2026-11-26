@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { AgentAsksButton } from '@/modules/agent-asks';
 import type { AppTab, Project, ProjectSession } from '@/shared/types';
 import { cn } from '@/shared/utils';
 import MobileMenuButton from '@/modules/project-workspace/MobileMenuButton';
@@ -20,6 +21,8 @@ type WorkspaceHeaderProps = {
   onMenuClick: () => void;
   /** Persists a new title for a session; resolves false when the backend refuses it. */
   onRenameSession: (sessionId: string, summary: string) => Promise<boolean>;
+  /** Counts and toggle for the panel of items the chat's agent waits on the user for; null when no chat is on screen. */
+  agentAsks: { isVisible: boolean; openCount: number; otherOpenCount: number; toggle: () => void } | null;
 };
 
 /** Rendered by WorkspaceMain to show the workspace title and chat connection status alongside the scrollable tab bar. */
@@ -33,6 +36,7 @@ export default function WorkspaceHeader({
   isMobile,
   onMenuClick,
   onRenameSession,
+  agentAsks,
 }: WorkspaceHeaderProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -108,6 +112,14 @@ export default function WorkspaceHeader({
             onRenameSession={onRenameSession}
           />
           <WorkspaceConnectionStatus />
+          {agentAsks && (
+            <AgentAsksButton
+              openCount={agentAsks.openCount}
+              otherOpenCount={agentAsks.otherOpenCount}
+              isPanelVisible={agentAsks.isVisible}
+              onToggle={agentAsks.toggle}
+            />
+          )}
         </div>
 
         <div className="-mx-3 min-w-0 sm:mx-0 sm:flex-1">
