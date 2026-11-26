@@ -4,6 +4,7 @@ import type { KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useOpenAgentAsks } from '@/modules/agent-asks/context/AgentAsksContext';
+import { selectGroupAsks } from '@/modules/agent-asks/hooks/useAgentAsksPanel';
 import { useSessionAgentAsks } from '@/modules/agent-asks/hooks/useSessionAgentAsks';
 import { Markdown } from '@/modules/chat';
 import { usePaletteOps } from '@/modules/command-palette';
@@ -12,6 +13,8 @@ import { cn } from '@/shared/utils';
 
 type AgentAsksPanelProps = {
   sessionId: string;
+  /** The chat's title: a master chat ("X master") also lists the items of its group's chats. */
+  sessionTitle?: string | null;
   isMobile: boolean;
   onClose: () => void;
   /** Opens another chat that has open items. */
@@ -159,7 +162,7 @@ const CLOSED_STATUS_LABELS: Record<Exclude<AgentAsk['status'], 'open'>, string> 
 };
 
 /** Rendered by the project-workspace module beside the chat: what the chat's agent waits on the user for, with the reply controls. */
-export default function AgentAsksPanel({ sessionId, isMobile, onClose, onNavigateToSession }: AgentAsksPanelProps) {
+export default function AgentAsksPanel({ sessionId, sessionTitle, isMobile, onClose, onNavigateToSession }: AgentAsksPanelProps) {
   const { t } = useTranslation();
   const { asks, resolve } = useSessionAgentAsks(sessionId);
   const allOpenAsks = useOpenAgentAsks();
@@ -176,11 +179,18 @@ export default function AgentAsksPanel({ sessionId, isMobile, onClose, onNavigat
   const openAsks = useMemo(() => asks.filter((ask) => ask.status === 'open'), [asks]);
   const closedAsks = useMemo(() => asks.filter((ask) => ask.status !== 'open'), [asks]);
 
+  // A master chat's group: the open items of the chats under it. They are read here and answered in their own chat.
+  const groupAsks = useMemo(
+    () => selectGroupAsks(allOpenAsks, sessionId, sessionTitle),
+    [allOpenAsks, sessionId, sessionTitle],
+  );
+
   // Other chats that wait on the user, each with its number of open items, oldest item first.
   const otherChats = useMemo(() => {
+    const inGroup = new Set(groupAsks.map((ask) => ask.id));
     const chats = new Map<string, { sessionId: string; title: string; count: number }>();
     for (const ask of allOpenAsks) {
-      if (!ask.sessionId || ask.sessionId === sessionId) {
+      if (!ask.sessionId || ask.sessionId === sessionId || inGroup.has(ask.id)) {
         continue;
       }
       const chat = chats.get(ask.sessionId);
@@ -191,7 +201,7 @@ export default function AgentAsksPanel({ sessionId, isMobile, onClose, onNavigat
       }
     }
     return [...chats.values()];
-  }, [allOpenAsks, sessionId]);
+  }, [allOpenAsks, groupAsks, sessionId]);
   // Items whose chat the server cannot find (not indexed yet, or deleted): shown so they can be dismissed.
   const unmatchedAsks = useMemo(() => allOpenAsks.filter((ask) => ask.sessionId === null), [allOpenAsks]);
 
@@ -218,9 +228,9 @@ export default function AgentAsksPanel({ sessionId, isMobile, onClose, onNavigat
       <header className="flex flex-shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
         <CircleHelp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
         <h2 className="text-sm font-medium text-foreground">{t('agentAsks.title', 'Waiting on you')}</h2>
-        {openAsks.length > 0 && (
+        {openAsks.length + groupAsks.length > 0 && (
           <span className="rounded-full bg-amber-500/15 px-1.5 text-xs tabular-nums text-amber-700 dark:text-amber-300">
-            {openAsks.length}
+            {openAsks.length + groupAsks.length}
           </span>
         )}
         <button
@@ -235,13 +245,61 @@ export default function AgentAsksPanel({ sessionId, isMobile, onClose, onNavigat
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2.5">
         {openAsks.length === 0 ? (
-          <p className="px-1 py-2 text-sm text-muted-foreground">
-            {t('agentAsks.empty', 'Nothing in this chat waits on you.')}
-          </p>
+          groupAsks.length === 0 && (
+            <p className="px-1 py-2 text-sm text-muted-foreground">
+              {t('agentAsks.empty', 'Nothing in this chat waits on you.')}
+            </p>
+          )
         ) : (
           <ul className="space-y-2.5">
             {openAsks.map((ask) => <OpenAskCard key={ask.id} ask={ask} now={now} onResolve={handleResolve} />)}
           </ul>
+        )}
+
+        {groupAsks.length > 0 && (
+          <section>
+            <h3 className="px-1 text-xs font-medium text-muted-foreground">
+              {t('agentAsks.groupChats', "From this group's chats")}
+            </h3>
+            <ul className="mt-1.5 space-y-2">
+              {groupAsks.map((ask) => (
+                <li
+                  key={ask.id}
+                  data-testid="agent-ask-group"
+                  className={cn(
+                    'rounded-lg border bg-card p-2.5 text-sm shadow-sm',
+                    ask.kind === 'question' ? 'border-amber-500/40' : 'border-sky-500/40',
+                  )}
+                >
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="min-w-0 flex-1 truncate font-medium" title={ask.sessionTitle ?? undefined}>
+                      {ask.sessionTitle}
+                    </span>
+                    <span className="tabular-nums">#{ask.id}</span>
+                    <time className="tabular-nums" dateTime={ask.createdAt}>{formatAge(ask.createdAt, now)}</time>
+                  </div>
+                  <p className="break-words font-medium leading-snug text-foreground">{ask.title}</p>
+                  {ask.details && (
+                    <Markdown className="prose prose-sm mt-1.5 max-h-48 max-w-none overflow-y-auto break-words text-[13px] dark:prose-invert">
+                      {ask.details}
+                    </Markdown>
+                  )}
+                  <div className="mt-1.5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => ask.sessionId && onNavigateToSession(ask.sessionId)}
+                      className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent"
+                    >
+                      {ask.kind === 'question'
+                        ? t('agentAsks.openChatToAnswer', 'Open the chat to answer')
+                        : t('agentAsks.openChatToAck', 'Open the chat to acknowledge')}
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {closedAsks.length > 0 && (

@@ -11,6 +11,7 @@ import { usePaletteOpsRegister } from '@/modules/command-palette';
 import { TaskMasterPanel, useTaskMasterProjectSync, useTasksSettings } from '@/modules/task-master';
 import type { AppTab, DirectoryRevealRequest, Project, ProjectSession, SessionEstablishedContext, SessionNavigationOptions, SettingsMainTab } from '@/shared/types';
 import { useUiPreferences } from '@/shared/context/UiPreferencesContext';
+import { getSessionTitle } from '@/shared/utils';
 import { useFileOpenResolver } from '@/modules/project-workspace/hooks/useFileOpenResolver';
 import { EditorSidebar, useEditorSidebar } from '@/modules/code-editor';
 import WorkspaceHeader from '@/modules/project-workspace/WorkspaceHeader';
@@ -72,7 +73,8 @@ function WorkspaceMain({
   const [revealDirectory, setRevealDirectory] = useState<DirectoryRevealRequest | null>(null);
 
   // What the open chat's agent waits on the user for, shown in a panel beside the chat.
-  const agentAsksPanel = useAgentAsksPanel(selectedSession?.id ?? null, isMobile);
+  const selectedSessionTitle = selectedSession ? getSessionTitle(selectedSession) : null;
+  const agentAsksPanel = useAgentAsksPanel(selectedSession?.id ?? null, isMobile, selectedSessionTitle);
   const showAgentAsksPanel = agentAsksPanel.isVisible && activeTab === 'chat' && Boolean(selectedSession);
 
   const shouldShowTasksTab = Boolean(tasksEnabled && isTaskMasterInstalled);
@@ -240,6 +242,7 @@ function WorkspaceMain({
         {showAgentAsksPanel && selectedSession && !editorExpanded && (
           <AgentAsksPanel
             sessionId={selectedSession.id}
+            sessionTitle={selectedSessionTitle}
             isMobile={isMobile}
             onClose={agentAsksPanel.toggle}
             onNavigateToSession={onNavigateToSession}

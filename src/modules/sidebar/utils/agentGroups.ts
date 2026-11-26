@@ -1,5 +1,6 @@
 import type { RecentConversationListItem } from '@/shared/types';
 import { splitBenchLockPrefix } from '@/shared/ui/SessionTitle';
+import { readAgentTitleRole } from '@/shared/utils';
 
 /** One chat in the Agents tab. `label` is the title to draw: a grouped chat drops the "X: " its header already shows. */
 export type AgentRow = {
@@ -16,34 +17,6 @@ export type AgentEntry =
   | { kind: 'chat'; key: string; row: AgentRow }
   | { kind: 'group'; key: string; name: string; master: AgentRow | null; members: AgentRow[] };
 
-type TitleRole =
-  | { role: 'master'; key: string; name: string }
-  | { role: 'member'; key: string; name: string; rest: string }
-  | { role: 'none' };
-
-const toGroupKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
-
-/**
- * "X master ..." heads the group X and "X: ..." belongs to it. The colon must
- * be followed by a space or end the title, so a URL is not a prefix.
- */
-function readTitleRole(title: string): TitleRole {
-  const colon = /:(?:\s|$)/.exec(title);
-  const head = colon ? title.slice(0, colon.index) : title;
-
-  const master = /^(.+?)\s+master\b/i.exec(head);
-  if (master) {
-    return { role: 'master', key: toGroupKey(master[1]), name: master[1].trim() };
-  }
-
-  const name = head.trim();
-  if (colon && name.length > 0 && name.length <= 40) {
-    return { role: 'member', key: toGroupKey(name), name, rest: title.slice(colon.index + 1).trim() };
-  }
-
-  return { role: 'none' };
-}
-
 /**
  * Groups the recent-chats feed for the Agents tab. Entries keep the feed's
  * order. A group sits where its master chat was, so busy chats under a quiet
@@ -54,7 +27,7 @@ export function groupAgentConversations(conversations: RecentConversationListIte
     // Bench-lock markers sit in front of the title and are not part of its name.
     const { title } = splitBenchLockPrefix(conversation.sessionTitle);
     const markers = conversation.sessionTitle.slice(0, conversation.sessionTitle.length - title.length);
-    return { conversation, markers, role: readTitleRole(title.trim()) };
+    return { conversation, markers, role: readAgentTitleRole(title.trim()) };
   });
 
   const masterByKey = new Map<string, RecentConversationListItem>();

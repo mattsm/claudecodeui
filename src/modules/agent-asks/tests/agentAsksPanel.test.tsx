@@ -267,3 +267,47 @@ test('an item whose chat cannot be found is listed and can be dismissed', async 
   await act(async () => { fireEvent.click(row.querySelector('button') as HTMLButtonElement); });
   assert.deepEqual(server.resolveCalls, [{ id: 12, body: { action: 'dismiss' } }]);
 });
+
+test('a master chat lists the open items of its group, with a way to the chat that asked', async () => {
+  setServerAsks([
+    ask(21, 'child-1', { title: 'May I read the bench counters?', sessionTitle: '[A1] [STA] mt7995: station data path' }),
+    ask(22, 'other', { sessionTitle: 'wireless lab: map UI' }),
+  ]);
+  const socket = createSocket();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <AgentAsksProvider subscribe={socket.subscribe}>{children}</AgentAsksProvider>
+  );
+
+  // The master has nothing of its own, but its group has one item: the panel opens for it.
+  const { result } = renderHook(() => useAgentAsksPanel('master', false, 'mt7995 master'), { wrapper });
+  await waitFor(() => assert.equal(result.current.openCount, 1));
+  assert.equal(result.current.otherOpenCount, 1);
+  assert.equal(result.current.isVisible, true);
+
+  // A chat that is not that group's master does not get it.
+  const plain = renderHook(() => useAgentAsksPanel('plain', false, 'decagon'), { wrapper });
+  await waitFor(() => assert.equal(plain.result.current.otherOpenCount, 2));
+  assert.equal(plain.result.current.openCount, 0);
+  assert.equal(plain.result.current.isVisible, false);
+
+  const navigated: string[] = [];
+  render(
+    <AgentAsksProvider subscribe={socket.subscribe}>
+      <AgentAsksPanel
+        sessionId="master"
+        sessionTitle="mt7995 master"
+        isMobile={false}
+        onClose={() => {}}
+        onNavigateToSession={(id) => navigated.push(id)}
+      />
+    </AgentAsksProvider>,
+  );
+
+  const groupItem = await screen.findByTestId('agent-ask-group');
+  assert.equal(groupItem.textContent?.includes('May I read the bench counters?'), true);
+  assert.equal(groupItem.textContent?.includes('mt7995: station data path'), true);
+  // The group's item is not repeated under the other chats.
+  assert.equal(screen.getAllByTestId('agent-asks-other-chat').length, 1);
+  fireEvent.click(screen.getByRole('button', { name: 'Open the chat to answer' }));
+  assert.deepEqual(navigated, ['child-1']);
+});

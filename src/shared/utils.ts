@@ -270,3 +270,38 @@ export const getQuickSettingsTabId = (tab: QuickSettingsTab): string => `quick-s
 
 /** DOM id of the tabpanel a quick settings tab controls; pairs with `getQuickSettingsTabId`. */
 export const getQuickSettingsTabPanelId = (tab: QuickSettingsTab): string => `quick-settings-tabpanel-${tab}`;
+
+// ---------------------------
+
+//----------------- AGENT CHAT GROUPS ------------
+
+/** What a chat's title says about its group: "X master ..." heads the group X, "X: ..." belongs to it. */
+export type AgentTitleRole =
+  | { role: 'master'; key: string; name: string }
+  | { role: 'member'; key: string; name: string; rest: string }
+  | { role: 'none' };
+
+const toAgentGroupKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Reads a chat title's group role. The sidebar's Agents tab groups chats with
+ * it, and the agent questions panel uses it to show a master chat its group's
+ * questions. Pass the title without its bench-lock markers. The colon must be
+ * followed by a space or end the title, so a URL is not a prefix.
+ */
+export function readAgentTitleRole(title: string): AgentTitleRole {
+  const colon = /:(?:\s|$)/.exec(title);
+  const head = colon ? title.slice(0, colon.index) : title;
+
+  const master = /^(.+?)\s+master\b/i.exec(head);
+  if (master) {
+    return { role: 'master', key: toAgentGroupKey(master[1]), name: master[1].trim() };
+  }
+
+  const name = head.trim();
+  if (colon && name.length > 0 && name.length <= 40) {
+    return { role: 'member', key: toAgentGroupKey(name), name, rest: title.slice(colon.index + 1).trim() };
+  }
+
+  return { role: 'none' };
+}
