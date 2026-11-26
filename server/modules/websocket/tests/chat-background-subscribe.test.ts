@@ -6,7 +6,7 @@ import path from 'node:path';
 import test, { mock } from 'node:test';
 
 import { closeConnection, initializeDatabase, sessionsDb } from '@/modules/database/index.js';
-import { handleChatConnection } from '@/modules/websocket/services/chat-websocket.service.js';
+import { handleChatConnection, runDetachedChatTurn } from '@/modules/websocket/services/chat-websocket.service.js';
 import { chatRunRegistry } from '@/modules/websocket/services/chat-run-registry.service.js';
 import { connectedClients } from '@/modules/websocket/services/websocket-state.service.js';
 
@@ -164,4 +164,85 @@ test('a retained run\'s eviction timer cannot evict the session\'s next run earl
   } finally {
     mock.timers.reset();
   }
+});
+
+/** A runtime whose turn sends one message and then stays open until released. */
+function createHeldRuntime() {
+  let finish: (() => void) | undefined;
+  const runtime = {
+    hasRuntime: () => true,
+    hasBackgroundWork: () => false,
+    getPendingApprovalsForSession: () => [],
+    run: async (_provider: string, command: string, _options: unknown, writer: { send: (message: unknown) => void }) => {
+      writer.send({ kind: 'text', provider: 'claude', sessionId: 'native-1', role: 'assistant', content: `reply to ${command}` });
+      await new Promise<void>((resolve) => { finish = resolve; });
+      writer.send({ kind: 'complete', provider: 'claude', sessionId: 'native-1', exitCode: 0 });
+    },
+  };
+  return { runtime, finish: () => finish?.() };
+}
+
+function openTab(runtime: unknown, sessionId: string | null) {
+  const tab = createFakeSocket();
+  handleChatConnection(tab as never, { user: { id: 1 } } as never, { runtime: runtime as never });
+  if (sessionId) {
+    tab.emit('message', JSON.stringify({ type: 'chat.subscribe', sessions: [{ sessionId, lastSeq: 0 }] }));
+  }
+  return tab;
+}
+
+test('a tab showing an idle chat gets the turn the server starts in it, from the first event', async () => {
+  await withIsolatedDatabase(async () => {
+    sessionsDb.createAppSession('other-session', 'claude', os.tmpdir());
+    const { runtime, finish } = createHeldRuntime();
+
+    // Open on the chat before anything runs, as a tab left on screen is.
+    const watching = openTab(runtime, SESSION_ID);
+    const elsewhere = openTab(runtime, 'other-session');
+    const closed = openTab(runtime, SESSION_ID);
+    closed.emit('close');
+    // This tab moved on to another chat: its latest subscribe is the one that counts.
+    const movedOn = openTab(runtime, SESSION_ID);
+    movedOn.emit('message', JSON.stringify({ type: 'chat.subscribe', sessions: [{ sessionId: 'other-session', lastSeq: 0 }] }));
+    await settle();
+    for (const tab of [watching, elsewhere, closed, movedOn]) {
+      tab.frames.length = 0;
+    }
+
+    // A queued or scheduled message: no socket asked for this run.
+    const turn = runDetachedChatTurn({ sessionId: SESSION_ID, userId: 1, content: 'queued text' }, { runtime: runtime as never });
+    await settle();
+
+    assert.deepEqual(
+      watching.frames.map((frame) => [frame.kind, frame.isProcessing ?? frame.content]),
+      [['chat_subscribed', true], ['text', 'reply to queued text']],
+      'the open tab is told the chat is processing and gets the run\'s events',
+    );
+    assert.deepEqual(elsewhere.frames, [], 'a tab on another chat gets nothing');
+    assert.deepEqual(movedOn.frames, [], 'a tab that left the chat gets nothing');
+    assert.deepEqual(closed.frames, [], 'a closed tab gets nothing');
+
+    finish();
+    await turn;
+    assert.equal(watching.frames.at(-1)?.kind, 'complete');
+  });
+});
+
+test('the tab that sends a message is not told twice that its chat is processing', async () => {
+  await withIsolatedDatabase(async () => {
+    const { runtime, finish } = createHeldRuntime();
+    const sender = openTab(runtime, SESSION_ID);
+    const secondTab = openTab(runtime, SESSION_ID);
+    await settle();
+    sender.frames.length = 0;
+    secondTab.frames.length = 0;
+
+    sender.emit('message', JSON.stringify({ type: 'chat.send', sessionId: SESSION_ID, content: 'typed text', options: {} }));
+    await settle();
+
+    assert.deepEqual(sender.frames.map((frame) => frame.kind), ['text']);
+    assert.deepEqual(secondTab.frames.map((frame) => frame.kind), ['chat_subscribed', 'text'], 'the same chat open in a second tab follows the turn live');
+    finish();
+    await settle();
+  });
 });

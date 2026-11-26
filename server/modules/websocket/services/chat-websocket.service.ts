@@ -235,6 +235,69 @@ function readVerifiedAttachments(clientOptions: AnyRecord): ChatAttachmentDescri
 }
 
 /**
+ * The chat each socket has open, from its latest `chat.subscribe`.
+ *
+ * A subscribe only attaches a socket to a run that is going at that moment.
+ * A tab that was already showing an idle chat when its next run started got
+ * nothing from that run until its own poll noticed and subscribed again, and
+ * a short run (a queued or scheduled message answered in seconds) ended
+ * before that. A run that starts attaches these sockets itself.
+ */
+const sessionWatchers = new Map<string, Set<WebSocket>>();
+const watchedSessionsBySocket = new WeakMap<WebSocket, Set<string>>();
+
+function forgetWatcher(ws: WebSocket): void {
+  for (const sessionId of watchedSessionsBySocket.get(ws) ?? []) {
+    const watchers = sessionWatchers.get(sessionId);
+    watchers?.delete(ws);
+    if (watchers?.size === 0) {
+      sessionWatchers.delete(sessionId);
+    }
+  }
+  watchedSessionsBySocket.delete(ws);
+}
+
+/** A subscribe names the chats the client has open now, so it replaces what the socket watched before. */
+function rememberWatcher(ws: WebSocket, sessionIds: string[]): void {
+  forgetWatcher(ws);
+  if (sessionIds.length === 0) {
+    return;
+  }
+  watchedSessionsBySocket.set(ws, new Set(sessionIds));
+  for (const sessionId of sessionIds) {
+    const watchers = sessionWatchers.get(sessionId) ?? new Set<WebSocket>();
+    watchers.add(ws);
+    sessionWatchers.set(sessionId, watchers);
+  }
+}
+
+/**
+ * Puts the sockets that have the chat open on a run that just started, and
+ * tells each one the chat is processing, as the ack of a subscribe sent
+ * during the run would. `starter` already gets the run's events.
+ */
+function attachWatchersToRun(
+  sessionId: string,
+  run: NonNullable<ReturnType<typeof chatRunRegistry.startRun>>,
+  starter: WebSocket | null,
+): void {
+  for (const watcher of sessionWatchers.get(sessionId) ?? []) {
+    if (watcher === starter || watcher.readyState !== WS_OPEN_STATE) {
+      continue;
+    }
+    run.writer.updateWebSocket(watcher);
+    sendJson(watcher, {
+      kind: 'chat_subscribed',
+      sessionId,
+      isProcessing: true,
+      lastSeq: 0,
+      pendingPermissions: [],
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+
+/**
  * Registers the run and hands the turn to the provider runtime.
  *
  * `extraRuntimeOptions` is how an edited message asks the provider to resume
@@ -271,6 +334,8 @@ async function dispatchRun(
     }
     return { started: false, error: RUN_IN_PROGRESS_ERROR };
   }
+
+  attachWatchersToRun(sessionId, run, ws);
 
   const clientOptions = (data.options ?? {}) as AnyRecord;
   const command = typeof data.content === 'string' ? data.content : '';
@@ -771,6 +836,11 @@ function handleChatSubscribe(
 ): void {
   const targets = Array.isArray(data.sessions) ? data.sessions : [];
 
+  rememberWatcher(ws, targets.flatMap((target) => {
+    const sessionId = target && typeof target === 'object' ? (target as AnyRecord).sessionId : null;
+    return typeof sessionId === 'string' && sessionId.trim() ? [sessionId.trim()] : [];
+  }));
+
   for (const target of targets) {
     if (!target || typeof target !== 'object') {
       continue;
@@ -988,5 +1058,6 @@ export function handleChatConnection(
   ws.on('close', () => {
     console.log('[INFO] Chat client disconnected');
     connectedClients.delete(ws);
+    forgetWatcher(ws);
   });
 }
