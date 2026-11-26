@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 
 import { agentAsksService } from '@/modules/agent-asks/agent-asks.service.js';
 import type { AgentAskOrigin } from '@/modules/agent-asks/agent-asks.service.js';
-import { AppError, asyncHandler, createApiSuccessResponse } from '@/shared/utils.js';
+import { AppError, asyncHandler, createApiSuccessResponse, secretsMatch } from '@/shared/utils.js';
 
 const router = express.Router();
 
@@ -20,7 +20,7 @@ const readOptionalString = (value: unknown): string | null =>
 
 router.use((req, res, next) => {
   const token = readBearerToken(req.headers.authorization);
-  if (!token || token !== agentAsksService.getMcpToken()) {
+  if (!token || !secretsMatch(token, agentAsksService.getMcpToken())) {
     res.status(401).json({ success: false, error: 'Invalid agent tools token.' });
     return;
   }
