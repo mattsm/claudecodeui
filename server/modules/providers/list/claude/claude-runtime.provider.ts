@@ -2122,6 +2122,11 @@ async function queryClaudeSDK(
     // Settles a turn whose `result` has arrived: tells the client the turn is
     // over, then holds the process for background work or lets it go.
     const settleTurnResult = () => {
+      // A newer run took this session over: the client state and the
+      // background-work tracking are that run's, and its stdin is already closed.
+      if (queryInstance && supersededInstances.has(queryInstance)) {
+        return;
+      }
       // The turn is done as far as the client is concerned.
       const abortPending = queryInstance ? abortedInstances.has(queryInstance) : false;
       const stillOutstanding = backgroundWork.hasOutstanding(sessionKey()!);
